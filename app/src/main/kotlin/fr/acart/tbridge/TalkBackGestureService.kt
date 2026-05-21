@@ -120,8 +120,21 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.CLICK_FOCUSED -> performOnFocused(AccessibilityNodeInfo.ACTION_CLICK, "ACTION_CLICK")
             GestureActions.LONG_CLICK_FOCUSED -> performOnFocused(AccessibilityNodeInfo.ACTION_LONG_CLICK, "ACTION_LONG_CLICK")
             GestureActions.SWIPE_TWO_FINGERS_UP -> swipeTwoFingersUp()
+            GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
+            GestureActions.GLOBAL_HOME -> performGlobalLogged(GLOBAL_ACTION_HOME, "GLOBAL_HOME")
+            GestureActions.GLOBAL_RECENTS -> performGlobalLogged(GLOBAL_ACTION_RECENTS, "GLOBAL_RECENTS")
+            GestureActions.GLOBAL_NOTIFICATIONS -> performGlobalLogged(GLOBAL_ACTION_NOTIFICATIONS, "GLOBAL_NOTIFICATIONS")
+            GestureActions.GLOBAL_QUICK_SETTINGS -> performGlobalLogged(GLOBAL_ACTION_QUICK_SETTINGS, "GLOBAL_QUICK_SETTINGS")
+            GestureActions.GLOBAL_POWER_DIALOG -> performGlobalLogged(GLOBAL_ACTION_POWER_DIALOG, "GLOBAL_POWER_DIALOG")
+            GestureActions.GLOBAL_LOCK -> performGlobalLogged(GLOBAL_ACTION_LOCK_SCREEN, "GLOBAL_LOCK")
+            GestureActions.GLOBAL_SCREENSHOT -> performGlobalLogged(GLOBAL_ACTION_TAKE_SCREENSHOT, "GLOBAL_SCREENSHOT")
             else -> Log.w(tag, "Unknown action: $action")
         }
+    }
+
+    private fun performGlobalLogged(globalAction: Int, label: String) {
+        val ok = performGlobalAction(globalAction)
+        Log.d(tag, "$label → $ok")
     }
 
     private fun swipeHorizontal(rightward: Boolean) {

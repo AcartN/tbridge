@@ -39,6 +39,16 @@ Actions (toujours unitaires — JAMAIS chaînées, raisonne avant) :
 Scroll TalkBack (2 doigts) :
   two-up               Scroll contenu vers le haut.
 
+Actions globales système (performGlobalAction) :
+  back                 = bouton retour système
+  home                 = bouton home
+  recents              = liste apps récentes
+  notifications        = ouvre shade notifications
+  quick-settings       = ouvre shade quick settings
+  power-dialog         = menu power (⚠️ peut interrompre la session)
+  lock                 = lock écran (⚠️ tu devras déverrouiller pour continuer)
+  screenshot           = capture d'écran
+
 Env vars:
   ADB                  Path vers adb (défaut: 'adb' via PATH)
   TBRIDGE_TOKEN        Override du token (par défaut lu depuis ${TOKEN_FILE})
@@ -140,6 +150,14 @@ case "$cmd" in
   click)     broadcast CLICK_FOCUSED ;;
   longclick) broadcast LONG_CLICK_FOCUSED ;;
   two-up)    broadcast SWIPE_TWO_FINGERS_UP ;;
+  back)            broadcast GLOBAL_BACK ;;
+  home)            broadcast GLOBAL_HOME ;;
+  recents)         broadcast GLOBAL_RECENTS ;;
+  notifications)   broadcast GLOBAL_NOTIFICATIONS ;;
+  quick-settings)  broadcast GLOBAL_QUICK_SETTINGS ;;
+  power-dialog)    broadcast GLOBAL_POWER_DIALOG ;;
+  lock)            broadcast GLOBAL_LOCK ;;
+  screenshot)      broadcast GLOBAL_SCREENSHOT ;;
   -h|--help|help) usage ;;
   *)
     echo "Unknown command: $cmd" >&2

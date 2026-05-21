@@ -13,6 +13,16 @@ internal object GestureActions {
     const val LONG_CLICK_FOCUSED = "${PREFIX}LONG_CLICK_FOCUSED"
     const val SWIPE_TWO_FINGERS_UP = "${PREFIX}SWIPE_TWO_FINGERS_UP"
 
+    // Global actions (performGlobalAction)
+    const val GLOBAL_BACK = "${PREFIX}GLOBAL_BACK"
+    const val GLOBAL_HOME = "${PREFIX}GLOBAL_HOME"
+    const val GLOBAL_RECENTS = "${PREFIX}GLOBAL_RECENTS"
+    const val GLOBAL_NOTIFICATIONS = "${PREFIX}GLOBAL_NOTIFICATIONS"
+    const val GLOBAL_QUICK_SETTINGS = "${PREFIX}GLOBAL_QUICK_SETTINGS"
+    const val GLOBAL_POWER_DIALOG = "${PREFIX}GLOBAL_POWER_DIALOG"
+    const val GLOBAL_LOCK = "${PREFIX}GLOBAL_LOCK"
+    const val GLOBAL_SCREENSHOT = "${PREFIX}GLOBAL_SCREENSHOT"
+
     /** Optional intent extras for [TAP]. */
     const val EXTRA_X = "x"
     const val EXTRA_Y = "y"
@@ -26,5 +36,13 @@ internal object GestureActions {
         CLICK_FOCUSED,
         LONG_CLICK_FOCUSED,
         SWIPE_TWO_FINGERS_UP,
+        GLOBAL_BACK,
+        GLOBAL_HOME,
+        GLOBAL_RECENTS,
+        GLOBAL_NOTIFICATIONS,
+        GLOBAL_QUICK_SETTINGS,
+        GLOBAL_POWER_DIALOG,
+        GLOBAL_LOCK,
+        GLOBAL_SCREENSHOT,
     )
 }
