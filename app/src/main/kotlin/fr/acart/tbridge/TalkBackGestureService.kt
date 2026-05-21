@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Path
+import android.os.Binder
 import android.os.Build
+import android.os.Process
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -18,14 +20,40 @@ import android.view.accessibility.AccessibilityNodeInfo
  *
  * Gestures dispatched through the accessibility pipeline are visible to TalkBack
  * (unlike `input swipe` which is filtered as a synthetic touch event).
+ *
+ * Security : the receiver is exported (any installed app can send the broadcasts).
+ * Two gates protect against unwanted use :
+ *  1. [TBridgeSettings.listenEnabled] toggle (user-controlled via MainActivity)
+ *  2. shared token extra : the broadcast must include `--es token "<secret>"`
+ *     matching the token stored on device.
  */
 internal class TalkBackGestureService : AccessibilityService() {
 
     private val tag = "TBGesture"
 
+    private lateinit var settings: TBridgeSettings
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
+
+            if (!settings.listenEnabled) {
+                Log.d(tag, "Ignored ($action) : listening disabled in app settings")
+                return
+            }
+            if (settings.shellOnly) {
+                val callingUid = Binder.getCallingUid()
+                if (callingUid != Process.SHELL_UID && callingUid != Process.ROOT_UID) {
+                    Log.w(tag, "Ignored ($action) : caller uid=$callingUid not shell/root (shell-only mode active)")
+                    return
+                }
+            }
+            val incomingToken = intent.getStringExtra(TBridgeSettings.INTENT_EXTRA_TOKEN)
+            if (incomingToken == null || incomingToken != settings.token) {
+                Log.w(tag, "Ignored ($action) : token mismatch")
+                return
+            }
+
             Log.d(tag, "Action: $action")
             handleAction(action, intent)
         }
@@ -33,6 +61,7 @@ internal class TalkBackGestureService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        settings = TBridgeSettings(this)
         val filter = IntentFilter().apply { GestureActions.ALL.forEach(::addAction) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)

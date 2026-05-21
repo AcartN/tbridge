@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true">
@@ -19,25 +21,24 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
             android:text="@string/subtitle"
-            android:textAppearance="?attr/textAppearanceBodyLarge"
-            android:layout_marginTop="4dp" />
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
 
+        <!-- Service status -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             app:cardCornerRadius="12dp"
-            app:contentPadding="16dp"
-            xmlns:app="http://schemas.android.com/apk/res-auto">
+            app:contentPadding="16dp">
 
             <TextView
                 android:id="@+id/statusLabel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textAppearance="?attr/textAppearanceTitleMedium"
-                tools:text="@string/status_disabled"
-                xmlns:tools="http://schemas.android.com/tools" />
+                tools:text="@string/status_disabled" />
 
         </com.google.android.material.card.MaterialCardView>
 
@@ -48,6 +49,93 @@
             android:layout_marginTop="16dp"
             android:text="@string/open_settings" />
 
+        <!-- Settings card : toggle + token -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            app:cardCornerRadius="12dp"
+            app:contentPadding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_title"
+                    android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/listenSwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/listen_switch_label" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/shellOnlySwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/shell_only_switch_label" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/shell_only_hint"
+                    android:textAppearance="?attr/textAppearanceLabelSmall" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="@string/token_label"
+                    android:textAppearance="?attr/textAppearanceLabelMedium" />
+
+                <TextView
+                    android:id="@+id/tokenValue"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="monospace"
+                    android:textIsSelectable="true"
+                    tools:text="abcdef1234567890abcdef12" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/copyTokenButton"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="8dp"
+                        android:text="@string/copy_token" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/regenerateTokenButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/regenerate_token" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- How to -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -59,9 +147,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
             android:text="@string/howto_body"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:fontFamily="monospace" />
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
 
     </LinearLayout>
 </ScrollView>
