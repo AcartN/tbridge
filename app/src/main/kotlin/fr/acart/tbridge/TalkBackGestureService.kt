@@ -37,8 +37,8 @@ internal class TalkBackGestureService : AccessibilityService() {
         override fun onReceive(context: Context, intent: Intent) {
             val action = intent.action ?: return
 
-            if (!settings.listenEnabled) {
-                Log.d(tag, "Ignored ($action) : listening disabled in app settings")
+            if (!settings.isListeningActive) {
+                Log.d(tag, "Ignored ($action) : listening window expired or never started")
                 return
             }
             if (settings.shellOnly) {

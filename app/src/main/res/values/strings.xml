@@ -4,8 +4,8 @@
     <string name="accessibility_service_description">
         tbridge convertit des broadcasts adb en vrais gestes TalkBack via dispatchGesture().
         Outil de dev/test pour automatiser l\'accessibilité Android. Service exporté
-        (toute app installée peut tenter d\'envoyer un broadcast — protégé par un token
-        secret + un toggle ON/OFF dans l\'app).
+        (toute app installée peut tenter d\'envoyer un broadcast — protégé par 3 gates :
+        fenêtre d\'activation temporaire, restriction à adb shell, et token secret).
     </string>
 
     <string name="title">tbridge</string>
@@ -14,8 +14,24 @@
     <string name="status_disabled">Service désactivé — active-le dans les paramètres</string>
     <string name="open_settings">Ouvrir les paramètres d\'accessibilité</string>
 
+    <!-- Activation (time-bounded) -->
+    <string name="activation_title">Écoute des broadcasts</string>
+    <string name="activation_status_inactive">Désactivé</string>
+    <string name="activation_status_active">Actif jusqu\'à %1$s · %2$s restantes</string>
+    <string name="duration_label">Durée d\'activation</string>
+    <string name="duration_5min">5 minutes</string>
+    <string name="duration_15min">15 minutes</string>
+    <string name="duration_30min">30 minutes</string>
+    <string name="duration_1h">1 heure</string>
+    <string name="duration_2h">2 heures</string>
+    <string name="duration_4h">4 heures</string>
+    <string name="activate">Activer</string>
+    <string name="deactivate">Désactiver maintenant</string>
+    <string name="toast_activated">Écoute activée pour %1$s</string>
+    <string name="toast_deactivated">Écoute désactivée</string>
+
+    <!-- Settings card -->
     <string name="settings_title">Sécurité</string>
-    <string name="listen_switch_label">Écouter les broadcasts adb</string>
     <string name="shell_only_switch_label">Restreindre à adb shell (recommandé)</string>
     <string name="shell_only_hint">Si activé, seul adb (UID 2000) ou root peut déclencher les gestes. Si désactivé, n\'importe quelle app installée le peut (avec le bon token).</string>
     <string name="token_label">Token (à inclure dans chaque broadcast)</string>
@@ -24,6 +40,19 @@
     <string name="toast_token_copied">Token copié dans le presse-papier</string>
     <string name="toast_token_regenerated">Nouveau token généré</string>
 
+    <!-- Biometric -->
+    <string name="guard_activate_title">Activer l\'écoute des broadcasts</string>
+    <string name="guard_deactivate_title">Désactiver l\'écoute</string>
+    <string name="guard_shell_only_title">Modifier la restriction shell</string>
+    <string name="guard_regenerate_title">Régénérer le token</string>
+    <string name="guard_subtitle">Confirme avec empreinte ou code de verrouillage</string>
+
+    <!-- How to -->
     <string name="howto_title">Comment utiliser</string>
-    <string name="howto_body">Activer le service ci-dessus, puis depuis ton poste :\n\n./scripts/tb.sh init        # une fois, fetch le token\n./scripts/tb.sh right       # swipe TalkBack droite\n./scripts/tb.sh click       # active l\'élément focused\n\nSi tu régénères le token via le bouton ci-dessus, refais init côté CLI.</string>
+    <string name="howto_body">1. Activer le service AccessibilityService ci-dessus.\n2. Choisir une durée + Activer (biométrique).\n3. Depuis ton poste :\n\n   ./scripts/tb.sh init     # fetch token (une fois)\n   ./scripts/tb.sh right    # swipe TalkBack droite\n   ./scripts/tb.sh click    # active l\'élément focused\n\nL\'écoute s\'auto-désactive à expiration. Réactive depuis l\'app.</string>
+
+    <!-- Durée affichage relatif -->
+    <string name="time_remaining_hours">%1$dh %2$02d</string>
+    <string name="time_remaining_minutes">%1$d min</string>
+    <string name="time_remaining_seconds">%1$d s</string>
 </resources>

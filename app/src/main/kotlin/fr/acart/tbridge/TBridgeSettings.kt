@@ -3,13 +3,18 @@ package fr.acart.tbridge
 import android.content.Context
 import android.content.SharedPreferences
 import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
 
 /**
- * Wrapper sur SharedPreferences pour les 2 réglages de tbridge :
- *  - [listenEnabled] : activer ou non la réception des broadcasts adb
- *  - [token] : secret partagé requis dans chaque broadcast (extra `token`)
+ * Wrapper sur SharedPreferences pour les réglages tbridge.
  *
- * Le token est généré aléatoirement à la première lecture si absent (24 chars alphanum,
+ * Sécurité en 3 gates :
+ *  1. [isListeningActive] : true seulement si on est dans la fenêtre d'activation
+ *     (l'écoute s'auto-désactive après la durée choisie par l'user).
+ *  2. [shellOnly] : si true, seul le caller adb shell / root est accepté.
+ *  3. [token] : secret partagé requis dans chaque broadcast.
+ *
+ * Le token est généré aléatoirement à la première lecture si absent (24 chars,
  * ~143 bits d'entropie via SecureRandom).
  */
 internal class TBridgeSettings(context: Context) {
@@ -17,9 +22,32 @@ internal class TBridgeSettings(context: Context) {
     private val prefs: SharedPreferences = context.applicationContext
         .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    var listenEnabled: Boolean
-        get() = prefs.getBoolean(KEY_LISTEN_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_LISTEN_ENABLED, value).apply()
+    /** Timestamp (ms epoch) jusqu'auquel l'écoute reste active. 0 = jamais. */
+    val listenActiveUntilMs: Long
+        get() = prefs.getLong(KEY_ACTIVE_UNTIL, 0L)
+
+    /** True si on est dans la fenêtre d'activation. */
+    val isListeningActive: Boolean
+        get() = listenActiveUntilMs > System.currentTimeMillis()
+
+    /** Active l'écoute pour [durationMs]. Stocke aussi la durée comme last-used. */
+    fun activateFor(durationMs: Long) {
+        val until = System.currentTimeMillis() + durationMs
+        prefs.edit()
+            .putLong(KEY_ACTIVE_UNTIL, until)
+            .putLong(KEY_LAST_DURATION, durationMs)
+            .apply()
+    }
+
+    /** Coupe l'écoute immédiatement. */
+    fun deactivate() {
+        prefs.edit().putLong(KEY_ACTIVE_UNTIL, 0L).apply()
+    }
+
+    /** Dernière durée d'activation choisie (défaut : 1h). */
+    var lastUsedDurationMs: Long
+        get() = prefs.getLong(KEY_LAST_DURATION, TimeUnit.HOURS.toMillis(1))
+        set(value) = prefs.edit().putLong(KEY_LAST_DURATION, value).apply()
 
     var shellOnly: Boolean
         get() = prefs.getBoolean(KEY_SHELL_ONLY, true)
@@ -53,12 +81,24 @@ internal class TBridgeSettings(context: Context) {
 
     companion object {
         const val PREFS_NAME: String = "tbridge"
-        const val KEY_LISTEN_ENABLED: String = "listen_enabled"
+        const val KEY_ACTIVE_UNTIL: String = "active_until_ms"
+        const val KEY_LAST_DURATION: String = "last_duration_ms"
         const val KEY_SHELL_ONLY: String = "shell_only"
         const val KEY_TOKEN: String = "token"
         const val INTENT_EXTRA_TOKEN: String = "token"
+
         private const val TOKEN_LENGTH = 24
         private val TOKEN_ALPHABET: CharArray =
             (('a'..'z') + ('A'..'Z') + ('0'..'9')).toCharArray()
+
+        /** Presets de durée affichés dans le spinner UI. */
+        val DURATION_PRESETS_MS: LongArray = longArrayOf(
+            TimeUnit.MINUTES.toMillis(5),
+            TimeUnit.MINUTES.toMillis(15),
+            TimeUnit.MINUTES.toMillis(30),
+            TimeUnit.HOURS.toMillis(1),
+            TimeUnit.HOURS.toMillis(2),
+            TimeUnit.HOURS.toMillis(4),
+        )
     }
 }
