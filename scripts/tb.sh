@@ -14,6 +14,9 @@ PREFIX="fr.acart.tbridge.gesture"
 PKG="fr.acart.tbridge"
 ADB="${ADB:-adb}"
 TOKEN_FILE="${HOME}/.tbridge-token"
+# Délai entre 2 broadcasts dans une commande multi-N. Doit laisser TalkBack vocaliser
+# l'élément focused entre 2 swipes. ~700ms est un bon compromis.
+INTER_DELAY="${TBRIDGE_INTER_DELAY:-0.7}"
 
 usage() {
   cat <<EOF
@@ -23,24 +26,33 @@ Setup:
   init                 Fetch le token depuis l'app (via adb run-as) et le stocke
                        dans ${TOKEN_FILE}.
 
-Navigation TalkBack:
-  right                Swipe → focus élément suivant
-  left                 Swipe ← focus précédent
-  up / down            Swipe vertical
-  tap [x] [y]          Tap simple (défaut = centre écran)
-  click                Active l'élément accessibility focused (= double-tap)
-  longclick            Long-clic sur l'élément focused
-  two-up               Swipe 2 doigts vers le haut (scroll TalkBack)
+Navigation TalkBack (peut être enchaîné via [N]):
+  right [N]            N swipe-right (= focus → élément suivant). N défaut 1.
+  left [N]             N swipe-left (= focus précédent). N défaut 1.
+  up / down            Swipe vertical (1 seul, pas de N).
+  tap [x] [y]          Tap simple (défaut = centre écran).
+
+Actions (toujours unitaires — JAMAIS chaînées, raisonne avant) :
+  click                Active l'élément accessibility focused (= double-tap TalkBack).
+  longclick            Long-clic sur l'élément focused.
+
+Scroll TalkBack (2 doigts) :
+  two-up               Scroll contenu vers le haut.
 
 Env vars:
   ADB                  Path vers adb (défaut: 'adb' via PATH)
   TBRIDGE_TOKEN        Override du token (par défaut lu depuis ${TOKEN_FILE})
+  TBRIDGE_INTER_DELAY  Délai (en s) entre 2 broadcasts d'une commande N. Défaut 0.7.
 
 Examples:
   $(basename "$0") init
-  $(basename "$0") right
+  $(basename "$0") right            # 1 swipe
+  $(basename "$0") right 5          # 5 swipes avec 700ms entre
   $(basename "$0") tap 540 1200
-  $(basename "$0") click
+  $(basename "$0") click            # action — JAMAIS chaînée
+
+⚠️  click / longclick / tap = actions à conséquence. Toujours raisonner sur
+    l'utterance TalkBack précédente AVANT de cliquer.
 EOF
 }
 
@@ -86,6 +98,22 @@ broadcast() {
   "$ADB" shell am broadcast -a "${PREFIX}.${action}" --es token "$token" "$@" >/dev/null
 }
 
+# Navigation directionnelle avec count optionnel.
+# Usage: nav_n SWIPE_RIGHT 5
+nav_n() {
+  local action="$1"; local n="${2:-1}"
+  if ! [[ "$n" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Usage: $(basename "$0") <right|left> [N≥1]" >&2
+    exit 1
+  fi
+  for ((i = 0; i < n; i++)); do
+    broadcast "$action"
+    if (( i < n - 1 )); then
+      sleep "$INTER_DELAY"
+    fi
+  done
+}
+
 if [[ $# -eq 0 ]]; then
   usage
   exit 1
@@ -95,8 +123,8 @@ cmd="$1"; shift
 
 case "$cmd" in
   init)      fetch_token ;;
-  right)     broadcast SWIPE_RIGHT ;;
-  left)      broadcast SWIPE_LEFT ;;
+  right)     nav_n SWIPE_RIGHT "${1:-1}" ;;
+  left)      nav_n SWIPE_LEFT "${1:-1}" ;;
   up)        broadcast SWIPE_UP ;;
   down)      broadcast SWIPE_DOWN ;;
   tap)

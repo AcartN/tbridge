@@ -33,7 +33,7 @@
     <!-- Settings card -->
     <string name="settings_title">Sécurité</string>
     <string name="shell_only_switch_label">Restreindre à adb shell (recommandé)</string>
-    <string name="shell_only_hint">Si activé, seul adb (UID 2000) ou root peut déclencher les gestes. Si désactivé, n\'importe quelle app installée le peut (avec le bon token).</string>
+    <string name="shell_only_hint">Si activé, le receiver requiert la permission Android WRITE_SECURE_SETTINGS pour accepter un broadcast — détenue par adb shell, pas par les apps tierces. Si désactivé, toute app peut envoyer (le token reste comme protection).</string>
     <string name="token_label">Token (à inclure dans chaque broadcast)</string>
     <string name="copy_token">Copier</string>
     <string name="regenerate_token">Régénérer</string>

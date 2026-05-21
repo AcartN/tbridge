@@ -32,16 +32,28 @@ Seule voie viable : un `AccessibilityService` custom qui appelle `dispatchGestur
 
 Wrapper bash `scripts/tb.sh` pour ergonomie :
 ```bash
-./tb.sh right            # swipe-right TalkBack : focus → élément suivant
-./tb.sh left             # swipe-left : élément précédent
-./tb.sh up / down        # swipe vertical
+./tb.sh right [N]        # N swipe-right TalkBack (défaut 1). Avance le focus.
+./tb.sh left [N]         # N swipe-left (focus précédent).
+./tb.sh up / down        # swipe vertical (1 seul)
 ./tb.sh tap [x] [y]      # tap simple (coords optionnelles, défaut = centre)
-./tb.sh click            # double-tap équivalent : ACTION_CLICK sur le node focused
+./tb.sh click            # ACTION_CLICK sur le node accessibility focused
 ./tb.sh longclick        # ACTION_LONG_CLICK
 ./tb.sh two-up           # swipe 2 doigts vers le haut (scroll TalkBack)
 ```
 
-Sous le capot c'est un `adb shell am broadcast -a fr.acart.tbridge.gesture.<NOM>`.
+Sous le capot c'est un `adb shell am broadcast -a fr.acart.tbridge.gesture.<NOM> --es token <secret>`.
+
+### Règle dure : `click` jamais chaîné, toujours raisonné
+
+Les commandes de **navigation** (`right`/`left`) peuvent être enchaînées en `[N]` (ex: `./tb.sh right 5` envoie 5 broadcasts avec ~700ms entre, configurable via `TBRIDGE_INTER_DELAY`). C'est un déplacement réversible — on traverse la page.
+
+Les commandes d'**action** (`click`, `longclick`, `tap`) sont **toujours unitaires** et **jamais chaînées** avec autre chose. Avant chaque `click` :
+1. Lire l'utterance TalkBack la plus récente (`adb logcat | grep speakWithSpeechCachePlayer`)
+2. Confirmer que c'est bien l'élément voulu (label, role)
+3. Raisonner sur la conséquence (cette action est-elle réversible ? destructive ? requiert biométrique ?)
+4. Seulement alors → `./tb.sh click`
+
+Une action irréfléchie = un état corrompu (élément cliqué dans le vide, action bancale, biométrique sauté). Comme un user TalkBack aveugle : on n'active rien sans avoir entendu et compris ce qui est focused.
 
 ## Vérification
 

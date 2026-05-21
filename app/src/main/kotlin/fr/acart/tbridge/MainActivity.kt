@@ -66,6 +66,7 @@ internal class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         settings = TBridgeSettings(this)
+        settings.cleanupLegacyKeys()
         guard = BiometricGuard(this)
 
         setContent {
@@ -130,12 +131,17 @@ internal class MainActivity : AppCompatActivity() {
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val expected = ComponentName(this, TalkBackGestureService::class.java).flattenToString()
+        val expected = ComponentName(this, TalkBackGestureService::class.java)
         val raw = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
         ) ?: return false
-        return raw.split(":").any { it.equals(expected, ignoreCase = true) }
+        // Android peut stocker au format "pkg/.ShortClass" ou "pkg/pkg.FullClass".
+        // ComponentName.unflattenFromString gère les deux. On compare en tant qu'objets
+        // ComponentName plutôt qu'en string pour normaliser.
+        return raw.split(":").any { entry ->
+            ComponentName.unflattenFromString(entry) == expected
+        }
     }
 }
 

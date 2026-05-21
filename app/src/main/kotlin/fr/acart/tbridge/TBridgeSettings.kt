@@ -79,6 +79,14 @@ internal class TBridgeSettings(context: Context) {
         return sb.toString()
     }
 
+    /** Nettoie une clé orpheline héritée d'un design précédent (boolean toggle remplacé
+     *  par la fenêtre time-bounded). À appeler au démarrage de l'app. */
+    fun cleanupLegacyKeys() {
+        if (prefs.contains("listen_enabled")) {
+            prefs.edit().remove("listen_enabled").apply()
+        }
+    }
+
     companion object {
         const val PREFS_NAME: String = "tbridge"
         const val KEY_ACTIVE_UNTIL: String = "active_until_ms"
