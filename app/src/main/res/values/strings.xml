@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">tbridge</string>
+    <string name="accessibility_service_description">
+        tbridge convertit des broadcasts adb en vrais gestes TalkBack via dispatchGesture().
+        Outil de dev/test pour automatiser l\'accessibilité Android. Service exporté
+        (toute app installée peut déclencher les gestes) — ne pas activer en environnement
+        sensible.
+    </string>
+
+    <string name="title">tbridge</string>
+    <string name="subtitle">Pont adb → TalkBack</string>
+    <string name="status_enabled">Service activé ✓</string>
+    <string name="status_disabled">Service désactivé — active-le dans les paramètres</string>
+    <string name="open_settings">Ouvrir les paramètres d\'accessibilité</string>
+    <string name="howto_title">Comment utiliser</string>
+    <string name="howto_body">Activer le service ci-dessus, puis depuis ton poste de dev :\n\nadb shell am broadcast -a fr.acart.tbridge.gesture.SWIPE_RIGHT\n\nVoir le script scripts/tb.sh pour un wrapper CLI.</string>
+</resources>
