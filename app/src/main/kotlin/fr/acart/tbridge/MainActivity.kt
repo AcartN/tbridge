@@ -48,8 +48,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.delay
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -198,12 +201,23 @@ private fun TbridgeScreen(
     val snapshot = rememberSettingsSnapshot(settings)
     var selectedDurationMs by remember { mutableLongStateOf(snapshot.lastUsedDurationMs) }
     var serviceEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled()) }
-    // Refresh service status au resume — pratique pour Compose, on poll juste régulièrement
-    LaunchedEffect(Unit) {
-        while (true) {
-            serviceEnabled = isAccessibilityServiceEnabled()
-            delay(2_000)
+    // Refresh service status à chaque ON_RESUME (= retour depuis Paramètres Accessibilité).
+    // Si on détecte un état zombie (service désactivé mais écoute "active" dans les prefs —
+    // ça arrive après un installDebug qui retire le service de enabled_accessibility_services
+    // par sécurité Android), on reset la fenêtre d'écoute pour cohérence.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val enabled = isAccessibilityServiceEnabled()
+                serviceEnabled = enabled
+                if (!enabled && settings.isListeningActive) {
+                    settings.deactivate()
+                }
+            }
         }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     Column(
