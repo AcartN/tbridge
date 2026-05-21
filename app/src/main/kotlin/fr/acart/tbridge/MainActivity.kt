@@ -7,210 +7,122 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.text.format.DateFormat
-import android.view.View
-import android.widget.ArrayAdapter
-import android.widget.Spinner
-import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.materialswitch.MaterialSwitch
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import java.util.Date
 import java.util.concurrent.TimeUnit
 
 internal class MainActivity : AppCompatActivity() {
 
-    private lateinit var statusLabel: TextView
-    private lateinit var activationStatus: TextView
-    private lateinit var durationSpinner: Spinner
-    private lateinit var activateButton: MaterialButton
-    private lateinit var deactivateButton: MaterialButton
-    private lateinit var shellOnlySwitch: MaterialSwitch
-    private lateinit var tokenValue: TextView
-
     private lateinit var settings: TBridgeSettings
     private lateinit var guard: BiometricGuard
 
-    private val refreshHandler = Handler(Looper.getMainLooper())
-    private val refreshTask = object : Runnable {
-        override fun run() {
-            refreshActivationStatus()
-            // refresh every 30s tant que l'activity est visible
-            refreshHandler.postDelayed(this, REFRESH_INTERVAL_MS)
-        }
-    }
-
-    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        when (key) {
-            TBridgeSettings.KEY_TOKEN -> refreshToken()
-            TBridgeSettings.KEY_SHELL_ONLY -> refreshShellOnlySwitch()
-            TBridgeSettings.KEY_ACTIVE_UNTIL, TBridgeSettings.KEY_LAST_DURATION -> {
-                refreshActivationStatus()
-                refreshDurationSpinner()
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
         settings = TBridgeSettings(this)
         guard = BiometricGuard(this)
 
-        bindViews()
-        setupDurationSpinner()
-        setupActivationButtons()
-        setupShellOnlySwitch()
-        setupTokenButtons()
-    }
-
-    private fun bindViews() {
-        statusLabel = findViewById(R.id.statusLabel)
-        activationStatus = findViewById(R.id.activationStatus)
-        durationSpinner = findViewById(R.id.durationSpinner)
-        activateButton = findViewById(R.id.activateButton)
-        deactivateButton = findViewById(R.id.deactivateButton)
-        shellOnlySwitch = findViewById(R.id.shellOnlySwitch)
-        tokenValue = findViewById(R.id.tokenValue)
-
-        findViewById<MaterialButton>(R.id.openSettingsButton).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        setContent {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    TbridgeScreen(
+                        settings = settings,
+                        isAccessibilityServiceEnabled = { isAccessibilityServiceEnabled() },
+                        onOpenAccessibilitySettings = {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        },
+                        onActivate = { durationMs ->
+                            guard.protect(
+                                title = getString(R.string.guard_activate_title),
+                                subtitle = getString(R.string.guard_subtitle),
+                                onSuccess = {
+                                    settings.activateFor(durationMs)
+                                    toast(getString(R.string.toast_activated, formatDuration(durationMs)))
+                                },
+                            )
+                        },
+                        onDeactivate = {
+                            guard.protect(
+                                title = getString(R.string.guard_deactivate_title),
+                                subtitle = getString(R.string.guard_subtitle),
+                                onSuccess = {
+                                    settings.deactivate()
+                                    toast(getString(R.string.toast_deactivated))
+                                },
+                            )
+                        },
+                        onShellOnlyChange = { newValue ->
+                            guard.protect(
+                                title = getString(R.string.guard_shell_only_title),
+                                subtitle = getString(R.string.guard_subtitle),
+                                onSuccess = { settings.shellOnly = newValue },
+                            )
+                        },
+                        onCopyToken = {
+                            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            cm.setPrimaryClip(ClipData.newPlainText("tbridge token", settings.token))
+                            toast(getString(R.string.toast_token_copied))
+                        },
+                        onRegenerateToken = {
+                            guard.protect(
+                                title = getString(R.string.guard_regenerate_title),
+                                subtitle = getString(R.string.guard_subtitle),
+                                onSuccess = {
+                                    settings.regenerateToken()
+                                    toast(getString(R.string.toast_token_regenerated))
+                                },
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 
-    private fun setupDurationSpinner() {
-        val labels = listOf(
-            getString(R.string.duration_5min),
-            getString(R.string.duration_15min),
-            getString(R.string.duration_30min),
-            getString(R.string.duration_1h),
-            getString(R.string.duration_2h),
-            getString(R.string.duration_4h),
-        )
-        durationSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            labels,
-        )
-    }
-
-    private fun setupActivationButtons() {
-        activateButton.setOnClickListener {
-            val duration = TBridgeSettings.DURATION_PRESETS_MS[durationSpinner.selectedItemPosition]
-            guard.protect(
-                title = getString(R.string.guard_activate_title),
-                subtitle = getString(R.string.guard_subtitle),
-                onSuccess = {
-                    settings.activateFor(duration)
-                    Toast.makeText(
-                        this,
-                        getString(R.string.toast_activated, formatDuration(duration)),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                },
-            )
-        }
-        deactivateButton.setOnClickListener {
-            guard.protect(
-                title = getString(R.string.guard_deactivate_title),
-                subtitle = getString(R.string.guard_subtitle),
-                onSuccess = {
-                    settings.deactivate()
-                    Toast.makeText(this, R.string.toast_deactivated, Toast.LENGTH_SHORT).show()
-                },
-            )
-        }
-    }
-
-    private fun setupShellOnlySwitch() {
-        shellOnlySwitch.setOnCheckedChangeListener { _, checked ->
-            if (checked == settings.shellOnly) return@setOnCheckedChangeListener
-            guard.protect(
-                title = getString(R.string.guard_shell_only_title),
-                subtitle = getString(R.string.guard_subtitle),
-                onSuccess = { settings.shellOnly = checked },
-                onCancel = { shellOnlySwitch.isChecked = settings.shellOnly },
-            )
-        }
-    }
-
-    private fun setupTokenButtons() {
-        findViewById<MaterialButton>(R.id.copyTokenButton).setOnClickListener {
-            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("tbridge token", settings.token))
-            Toast.makeText(this, R.string.toast_token_copied, Toast.LENGTH_SHORT).show()
-        }
-        findViewById<MaterialButton>(R.id.regenerateTokenButton).setOnClickListener {
-            guard.protect(
-                title = getString(R.string.guard_regenerate_title),
-                subtitle = getString(R.string.guard_subtitle),
-                onSuccess = {
-                    settings.regenerateToken()
-                    Toast.makeText(this, R.string.toast_token_regenerated, Toast.LENGTH_SHORT).show()
-                },
-            )
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshAll()
-        settings.registerListener(prefsListener)
-        refreshHandler.postDelayed(refreshTask, REFRESH_INTERVAL_MS)
-    }
-
-    override fun onPause() {
-        refreshHandler.removeCallbacks(refreshTask)
-        settings.unregisterListener(prefsListener)
-        super.onPause()
-    }
-
-    private fun refreshAll() {
-        refreshServiceStatus()
-        refreshActivationStatus()
-        refreshDurationSpinner()
-        refreshShellOnlySwitch()
-        refreshToken()
-    }
-
-    private fun refreshServiceStatus() {
-        statusLabel.setText(
-            if (isAccessibilityServiceEnabled()) R.string.status_enabled else R.string.status_disabled
-        )
-    }
-
-    private fun refreshActivationStatus() {
-        val active = settings.isListeningActive
-        if (active) {
-            val until = settings.listenActiveUntilMs
-            val remaining = until - System.currentTimeMillis()
-            val untilFormatted = DateFormat.getTimeFormat(this).format(Date(until))
-            activationStatus.text =
-                getString(R.string.activation_status_active, untilFormatted, formatDuration(remaining))
-            deactivateButton.visibility = View.VISIBLE
-        } else {
-            activationStatus.setText(R.string.activation_status_inactive)
-            deactivateButton.visibility = View.GONE
-        }
-    }
-
-    private fun refreshDurationSpinner() {
-        val lastUsed = settings.lastUsedDurationMs
-        val idx = TBridgeSettings.DURATION_PRESETS_MS.indexOfFirst { it == lastUsed }
-        if (idx >= 0) durationSpinner.setSelection(idx)
-    }
-
-    private fun refreshShellOnlySwitch() {
-        shellOnlySwitch.isChecked = settings.shellOnly
-    }
-
-    private fun refreshToken() {
-        tokenValue.text = settings.token
+    private fun toast(text: String) {
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
@@ -221,21 +133,347 @@ internal class MainActivity : AppCompatActivity() {
         ) ?: return false
         return raw.split(":").any { it.equals(expected, ignoreCase = true) }
     }
+}
 
-    private fun formatDuration(ms: Long): String {
-        if (ms <= 0) return getString(R.string.time_remaining_seconds, 0)
-        val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(ms)
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
-        return when {
-            hours > 0 -> getString(R.string.time_remaining_hours, hours, minutes)
-            minutes > 0 -> getString(R.string.time_remaining_minutes, minutes)
-            else -> getString(R.string.time_remaining_seconds, seconds)
+/**
+ * Snapshot des settings, observé via SharedPreferences listener + tick périodique
+ * pour le countdown de la fenêtre d'activation.
+ */
+private data class SettingsSnapshot(
+    val isListeningActive: Boolean,
+    val listenActiveUntilMs: Long,
+    val lastUsedDurationMs: Long,
+    val shellOnly: Boolean,
+    val token: String,
+)
+
+@Composable
+private fun rememberSettingsSnapshot(settings: TBridgeSettings): SettingsSnapshot {
+    var snapshot by remember {
+        mutableStateOf(captureSnapshot(settings))
+    }
+    // SharedPreferences listener → push update à chaque changement
+    DisposableEffect(settings) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            snapshot = captureSnapshot(settings)
+        }
+        settings.registerListener(listener)
+        onDispose { settings.unregisterListener(listener) }
+    }
+    // Tick périodique pour rafraîchir le countdown sans nouveau Pref change
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(15_000)
+            val current = captureSnapshot(settings)
+            // Replace seulement si l'état activé/désactivé a changé OU si on est actif
+            // (pour mettre à jour le countdown affiché)
+            if (current.isListeningActive != snapshot.isListeningActive || current.isListeningActive) {
+                snapshot = current
+            }
+        }
+    }
+    return snapshot
+}
+
+private fun captureSnapshot(settings: TBridgeSettings): SettingsSnapshot = SettingsSnapshot(
+    isListeningActive = settings.isListeningActive,
+    listenActiveUntilMs = settings.listenActiveUntilMs,
+    lastUsedDurationMs = settings.lastUsedDurationMs,
+    shellOnly = settings.shellOnly,
+    token = settings.token,
+)
+
+@Composable
+private fun TbridgeScreen(
+    settings: TBridgeSettings,
+    isAccessibilityServiceEnabled: () -> Boolean,
+    onOpenAccessibilitySettings: () -> Unit,
+    onActivate: (Long) -> Unit,
+    onDeactivate: () -> Unit,
+    onShellOnlyChange: (Boolean) -> Unit,
+    onCopyToken: () -> Unit,
+    onRegenerateToken: () -> Unit,
+) {
+    val snapshot = rememberSettingsSnapshot(settings)
+    var selectedDurationMs by remember { mutableLongStateOf(snapshot.lastUsedDurationMs) }
+    var serviceEnabled by remember { mutableStateOf(isAccessibilityServiceEnabled()) }
+    // Refresh service status au resume — pratique pour Compose, on poll juste régulièrement
+    LaunchedEffect(Unit) {
+        while (true) {
+            serviceEnabled = isAccessibilityServiceEnabled()
+            delay(2_000)
         }
     }
 
-    companion object {
-        private val REFRESH_INTERVAL_MS = TimeUnit.SECONDS.toMillis(30)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.title),
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Text(
+            text = stringResource(R.string.subtitle),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        ServiceStatusCard(
+            enabled = serviceEnabled,
+            onOpenSettings = onOpenAccessibilitySettings,
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        ActivationCard(
+            isActive = snapshot.isListeningActive,
+            listenActiveUntilMs = snapshot.listenActiveUntilMs,
+            selectedDurationMs = selectedDurationMs,
+            onSelectDuration = { selectedDurationMs = it },
+            onActivate = { onActivate(selectedDurationMs) },
+            onDeactivate = onDeactivate,
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SecurityCard(
+            shellOnly = snapshot.shellOnly,
+            token = snapshot.token,
+            onShellOnlyChange = onShellOnlyChange,
+            onCopyToken = onCopyToken,
+            onRegenerateToken = onRegenerateToken,
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = stringResource(R.string.howto_title),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.howto_body),
+            style = MaterialTheme.typography.bodyMedium,
+            fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
+@Composable
+private fun ServiceStatusCard(enabled: Boolean, onOpenSettings: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(
+                    if (enabled) R.string.status_enabled else R.string.status_disabled
+                ),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onOpenSettings,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.open_settings))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ActivationCard(
+    isActive: Boolean,
+    listenActiveUntilMs: Long,
+    selectedDurationMs: Long,
+    onSelectDuration: (Long) -> Unit,
+    onActivate: () -> Unit,
+    onDeactivate: () -> Unit,
+) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(R.string.activation_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val statusText = if (isActive) {
+                val untilFormatted = DateFormat.getTimeFormat(context).format(Date(listenActiveUntilMs))
+                val remaining = (listenActiveUntilMs - System.currentTimeMillis()).coerceAtLeast(0L)
+                stringResource(R.string.activation_status_active, untilFormatted, formatDuration(remaining))
+            } else {
+                stringResource(R.string.activation_status_inactive)
+            }
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = stringResource(R.string.duration_label),
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            DurationChips(
+                selected = selectedDurationMs,
+                onSelect = onSelectDuration,
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Button(
+                    onClick = onActivate,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.activate))
+                }
+                if (isActive) {
+                    OutlinedButton(
+                        onClick = onDeactivate,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(stringResource(R.string.deactivate))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun DurationChips(
+    selected: Long,
+    onSelect: (Long) -> Unit,
+) {
+    val items = listOf(
+        TBridgeSettings.DURATION_PRESETS_MS[0] to R.string.duration_5min,
+        TBridgeSettings.DURATION_PRESETS_MS[1] to R.string.duration_15min,
+        TBridgeSettings.DURATION_PRESETS_MS[2] to R.string.duration_30min,
+        TBridgeSettings.DURATION_PRESETS_MS[3] to R.string.duration_1h,
+        TBridgeSettings.DURATION_PRESETS_MS[4] to R.string.duration_2h,
+        TBridgeSettings.DURATION_PRESETS_MS[5] to R.string.duration_4h,
+    )
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.forEach { (durationMs, labelRes) ->
+            FilterChip(
+                selected = selected == durationMs,
+                onClick = { onSelect(durationMs) },
+                label = { Text(stringResource(labelRes)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecurityCard(
+    shellOnly: Boolean,
+    token: String,
+    onShellOnlyChange: (Boolean) -> Unit,
+    onCopyToken: () -> Unit,
+    onRegenerateToken: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.shell_only_switch_label),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = shellOnly,
+                    onCheckedChange = { onShellOnlyChange(it) },
+                )
+            }
+            Text(
+                text = stringResource(R.string.shell_only_hint),
+                style = MaterialTheme.typography.labelSmall,
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = stringResource(R.string.token_label),
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = token,
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                FilledTonalButton(
+                    onClick = onCopyToken,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.copy_token))
+                }
+                OutlinedButton(
+                    onClick = onRegenerateToken,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.regenerate_token))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun stringResource(resId: Int): String =
+    androidx.compose.ui.res.stringResource(resId)
+
+@Composable
+private fun stringResource(resId: Int, vararg formatArgs: Any): String =
+    androidx.compose.ui.res.stringResource(resId, *formatArgs)
+
+private fun formatDuration(ms: Long): String {
+    if (ms <= 0) return "0 s"
+    val totalSeconds = TimeUnit.MILLISECONDS.toSeconds(ms)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes.toString().padStart(2, '0')}"
+        minutes > 0 -> "$minutes min"
+        else -> "$seconds s"
     }
 }
