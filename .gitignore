@@ -1,0 +1,22 @@
+# Android / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Keystore
+*.keystore
+*.jks
+
+# Tooling IA local-only (cf. règle "tooling IA → .git/info/exclude")
+# (.claude/, agents, etc. → mis dans .git/info/exclude, pas ici)
