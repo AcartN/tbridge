@@ -25,12 +25,20 @@ Usage: $(basename "$0") <command> [args]
 Setup:
   init                 Fetch le token depuis l'app (via adb run-as) et le stocke
                        dans ${TOKEN_FILE}.
+  status               Vérifie tbridge activé + TalkBack activé + fenêtre d'écoute
+                       tbridge active. Exit non-zero si un check échoue.
+  talkback-on          Active TalkBack via Settings.Secure (ajoute son ComponentName
+                       à enabled_accessibility_services).
+  talkback-off         Désactive TalkBack (le retire de enabled_accessibility_services).
 
 Navigation TalkBack (peut être enchaîné via [N]):
   right [N]            N swipe-right (= focus → élément suivant). N défaut 1.
   left [N]             N swipe-left (= focus précédent). N défaut 1.
   up / down            Swipe vertical (1 seul, pas de N).
   tap [x] [y]          Tap simple (défaut = centre écran).
+  double-tap [x] [y]   Double-tap atomique (~150ms entre les 2). Avec TalkBack ON,
+                       active le node accessibility-focused (équivalent geste user).
+                       Utile quand ACTION_CLICK renvoie false.
 
 Actions (toujours unitaires — JAMAIS chaînées, raisonne avant) :
   click                Active l'élément accessibility focused (= double-tap TalkBack).
@@ -41,11 +49,13 @@ Scroll TalkBack (2 doigts, naming par effet pas par direction du doigt) :
   scroll-down          Voir le contenu d'en-dessous (= geste 2 doigts vers le haut).
 
 Inspection :
-  dump [--raw]         uiautomator dump : résumé compact des nodes intéressants
-                       (clickable / content-desc / text / focused). --raw pour
-                       voir le XML brut. À faire à chaque arrivée sur une page
-                       pour avoir le contexte structurel complet (testIds,
-                       hiérarchie, focus actuel).
+  focused              Affiche le node actuellement accessibility-focused (class,
+                       label, id, clickable, bounds). À LANCER avant chaque click
+                       pour confirmer qu'on est sur le bon élément.
+  dump [--raw]         Snapshot de l'arbre AccessibilityNodeInfo via tbridge
+                       (DUMP_TREE — pas de toggle TalkBack). --raw pour voir le
+                       XML brut. À faire à chaque arrivée sur une page pour avoir
+                       le contexte structurel complet (testIds, hiérarchie, focus).
   list-actions         Log les actions disponibles (id + label) dans logcat
                        (tag TBGesture). Utile pour découvrir 'Plus d'options',
                        'Voir détails' etc. (équivalent menu TalkBack contextuel).
@@ -143,8 +153,81 @@ fi
 
 cmd="$1"; shift
 
+check_status() {
+  local services
+  services=$("$ADB" shell settings get secure enabled_accessibility_services 2>/dev/null)
+  local ok=0
+  if echo "$services" | grep -q "fr.acart.tbridge"; then
+    echo "OK  tbridge service activé"
+  else
+    echo "KO  tbridge service NON activé (Paramètres → Accessibilité → tbridge)"
+    ok=1
+  fi
+  if echo "$services" | grep -q "com.google.android.marvin.talkback"; then
+    echo "OK  TalkBack activé"
+  else
+    echo "KO  TalkBack NON activé — sans TalkBack, les swipes tbridge ne navigueront pas"
+    ok=1
+  fi
+  # Vérif fenêtre tbridge active via SharedPreferences (active_until_ms > now)
+  local prefs
+  prefs=$("$ADB" shell run-as "$PKG" cat shared_prefs/tbridge.xml 2>/dev/null) || prefs=""
+  local active_until
+  # Format SharedPrefs XML : <long name="active_until_ms" value="1779411599806" />
+  active_until=$(printf '%s' "$prefs" | grep -oE 'name="active_until_ms" value="[0-9]+"' | grep -oE '[0-9]+' | head -1)
+  local now_ms
+  now_ms=$(($(date +%s) * 1000))
+  if [[ -n "$active_until" ]] && (( active_until > now_ms )); then
+    local remaining=$(( (active_until - now_ms) / 60000 ))
+    echo "OK  fenêtre tbridge active (~${remaining} min restantes)"
+  else
+    echo "KO  fenêtre tbridge expirée ou jamais activée (ouvrir l'app → Activer)"
+    ok=1
+  fi
+  return $ok
+}
+
+TALKBACK_COMPONENT="com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
+
+talkback_on() {
+  local current
+  current=$("$ADB" shell settings get secure enabled_accessibility_services 2>/dev/null)
+  [[ "$current" == "null" ]] && current=""
+  if echo "$current" | grep -q "com.google.android.marvin.talkback"; then
+    echo "TalkBack déjà activé"
+    return 0
+  fi
+  local new
+  if [[ -z "$current" ]]; then
+    new="$TALKBACK_COMPONENT"
+  else
+    new="${current}:${TALKBACK_COMPONENT}"
+  fi
+  "$ADB" shell settings put secure enabled_accessibility_services "$new" >/dev/null
+  "$ADB" shell settings put secure accessibility_enabled 1 >/dev/null
+  echo "TalkBack activé"
+}
+
+talkback_off() {
+  local current
+  current=$("$ADB" shell settings get secure enabled_accessibility_services 2>/dev/null)
+  [[ "$current" == "null" ]] && current=""
+  if ! echo "$current" | grep -q "com.google.android.marvin.talkback"; then
+    echo "TalkBack déjà désactivé"
+    return 0
+  fi
+  # Retire le composant TalkBack (et nettoie les éventuels ':' en double / début / fin)
+  local new
+  new=$(printf '%s' "$current" | sed -E "s#:?${TALKBACK_COMPONENT}##g; s#^:##; s#:\$##")
+  "$ADB" shell settings put secure enabled_accessibility_services "$new" >/dev/null
+  echo "TalkBack désactivé"
+}
+
 case "$cmd" in
-  init)      fetch_token ;;
+  init)         fetch_token ;;
+  status)       check_status ;;
+  talkback-on)  talkback_on ;;
+  talkback-off) talkback_off ;;
   right)     nav_n SWIPE_RIGHT "${1:-1}" ;;
   left)      nav_n SWIPE_LEFT "${1:-1}" ;;
   up)        broadcast SWIPE_UP ;;
@@ -159,6 +242,16 @@ case "$cmd" in
       exit 1
     fi
     ;;
+  double-tap)
+    if [[ $# -eq 0 ]]; then
+      broadcast DOUBLE_TAP
+    elif [[ $# -eq 2 ]]; then
+      broadcast DOUBLE_TAP --ei x "$1" --ei y "$2"
+    else
+      echo "Usage: double-tap [x y]" >&2
+      exit 1
+    fi
+    ;;
   click)     broadcast CLICK_FOCUSED ;;
   longclick) broadcast LONG_CLICK_FOCUSED ;;
   scroll-up)   broadcast SCROLL_UP ;;
@@ -166,15 +259,32 @@ case "$cmd" in
   dump)
     raw=false
     [[ "${1:-}" == "--raw" ]] && raw=true
-    "$ADB" shell uiautomator dump /sdcard/tb_dump.xml >/dev/null 2>&1 || {
-      echo "ERR : uiautomator dump a échoué" >&2; exit 1; }
-    "$ADB" shell cat /sdcard/tb_dump.xml > /tmp/tb_dump.xml
-    "$ADB" shell rm /sdcard/tb_dump.xml >/dev/null 2>&1
+    # Note : ne PAS utiliser `uiautomator dump` — il passe par UiAutomation qui
+    # suspend tous les a11y services pendant l'op, donc TalkBack annonce
+    # "désactivé... activé" à chaque dump. Notre action DUMP_TREE sérialise depuis
+    # `getRootInActiveWindow()` directement, sans toucher TalkBack.
+    broadcast DUMP_TREE
+    sleep 0.5
+    if ! "$ADB" shell run-as "$PKG" cat cache/dump.xml > /tmp/tb_dump.xml 2>/dev/null; then
+      echo "ERR : pull du dump (run-as $PKG) a échoué. tbridge bien activé + lancé ?" >&2
+      exit 1
+    fi
+    if [[ ! -s /tmp/tb_dump.xml ]]; then
+      echo "ERR : dump vide. Logs récents :" >&2
+      "$ADB" logcat -d -s TBGesture:D 2>&1 | grep -E "DumpTree" | tail -3 >&2
+      exit 1
+    fi
     if $raw; then
       cat /tmp/tb_dump.xml
     else
       python3 "$(dirname "$0")/parse_dump.py" /tmp/tb_dump.xml
     fi
+    ;;
+  focused)
+    "$ADB" logcat -c
+    broadcast FOCUSED
+    sleep 0.4
+    "$ADB" logcat -d -s TBGesture:D 2>&1 | grep "Focused:" | tail -1 || echo "(aucun log — vérifier tbridge + TalkBack actifs)"
     ;;
   list-actions)
     "$ADB" logcat -c

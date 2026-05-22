@@ -19,7 +19,10 @@ def walk(node, depth=0):
     rid_short = rid.split("/")[-1] if "/" in rid else rid
     bounds = attrs.get("bounds", "") or ""
 
-    has_signal = bool(cd or text or clickable or focused)
+    # rid sert aussi de signal : un node avec resource-id (testId) est intéressant
+    # pour l'accessibility même s'il n'a pas de cd/text (heading invisible, conteneur
+    # nommé, etc.).
+    has_signal = bool(cd or text or clickable or focused or rid_short)
     if has_signal:
         marker = ">>>" if focused else "   "
         flags = "C" if clickable else "-"

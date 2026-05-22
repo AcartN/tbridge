@@ -8,10 +8,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.io.File
 
 /**
  * AccessibilityService that translates adb broadcasts into real TalkBack gestures
@@ -138,6 +140,7 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.SWIPE_UP -> swipeVertical(downward = false)
             GestureActions.SWIPE_DOWN -> swipeVertical(downward = true)
             GestureActions.TAP -> handleTap(intent)
+            GestureActions.DOUBLE_TAP -> handleDoubleTap(intent)
             GestureActions.CLICK_FOCUSED -> performOnFocused(AccessibilityNodeInfo.ACTION_CLICK, "ACTION_CLICK")
             GestureActions.LONG_CLICK_FOCUSED -> performOnFocused(AccessibilityNodeInfo.ACTION_LONG_CLICK, "ACTION_LONG_CLICK")
             // SCROLL_DOWN (= voir le contenu d'en bas) = geste 2 doigts du bas vers le haut.
@@ -146,6 +149,8 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.SCROLL_UP -> swipeTwoFingersVertical(fingerGoesDown = true)
             GestureActions.LIST_ACTIONS -> listActionsOnFocused()
             GestureActions.DO_ACTION -> doActionOnFocused(intent.getIntExtra(GestureActions.EXTRA_ACTION_ID, -1))
+            GestureActions.DUMP_TREE -> dumpTree()
+            GestureActions.FOCUSED -> logFocused()
             GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
             GestureActions.GLOBAL_HOME -> performGlobalLogged(GLOBAL_ACTION_HOME, "GLOBAL_HOME")
             GestureActions.GLOBAL_RECENTS -> performGlobalLogged(GLOBAL_ACTION_RECENTS, "GLOBAL_RECENTS")
@@ -200,6 +205,20 @@ internal class TalkBackGestureService : AccessibilityService() {
         dispatchSingleStrokeGesture(x, y, x, y, durationMs = 50L)
     }
 
+    private fun handleDoubleTap(intent: Intent) {
+        val (w, h) = screenSize()
+        val x = intent.extras?.getInt(GestureActions.EXTRA_X, -1)?.takeIf { it >= 0 }?.toFloat() ?: (w / 2f)
+        val y = intent.extras?.getInt(GestureActions.EXTRA_Y, -1)?.takeIf { it >= 0 }?.toFloat() ?: (h / 2f)
+        val tap1 = Path().apply { moveTo(x, y); lineTo(x, y) }
+        val tap2 = Path().apply { moveTo(x, y); lineTo(x, y) }
+        // tap1 : 0-50ms ; gap 100ms ; tap2 : 150-200ms (sous seuil double-tap Android ~300ms)
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(tap1, 0L, 50L))
+            .addStroke(GestureDescription.StrokeDescription(tap2, 150L, 50L))
+            .build()
+        dispatchGestureLogged(gesture, label = "double-tap ($x,$y)")
+    }
+
     /**
      * Geste 2 doigts vertical.
      * @param fingerGoesDown true = les doigts se déplacent du haut vers le bas (= scroll UP, voir
@@ -251,6 +270,82 @@ internal class TalkBackGestureService : AccessibilityService() {
             Log.d(tag, "ListActions: [$idx] id=${action.id} label='$labelText'")
         }
     }
+
+    /**
+     * Sérialise l'arbre AccessibilityNodeInfo de la window active vers cacheDir/dump.xml,
+     * dans un format compatible avec celui produit par `uiautomator dump` (consommable par
+     * scripts/parse_dump.py). Pas de UiAutomation = TalkBack n'est pas suspendu.
+     */
+    private fun logFocused() {
+        val node = findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        if (node == null) {
+            Log.d(tag, "Focused: (none)")
+            return
+        }
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        val cls = node.className?.toString()?.substringAfterLast('.') ?: "?"
+        val label = node.contentDescription ?: node.text ?: ""
+        val rid = node.viewIdResourceName?.substringAfterLast('/') ?: ""
+        Log.d(tag, "Focused: class=$cls label='$label' id='$rid' clickable=${node.isClickable} bounds=[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}]")
+    }
+
+    private fun dumpTree() {
+        val out = File(cacheDir, "dump.xml")
+        val root = rootInActiveWindow
+        if (root == null) {
+            Log.w(tag, "DumpTree: rootInActiveWindow is null")
+            out.writeText("<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n<hierarchy/>\n")
+            return
+        }
+        val sb = StringBuilder(64 * 1024)
+        sb.append("<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n")
+        sb.append("<hierarchy rotation=\"0\">\n")
+        serializeNode(root, sb, depth = 1)
+        sb.append("</hierarchy>\n")
+        out.writeText(sb.toString())
+        Log.d(tag, "DumpTree: ${sb.length} bytes → ${out.absolutePath}")
+    }
+
+    private fun serializeNode(node: AccessibilityNodeInfo, sb: StringBuilder, depth: Int) {
+        val indent = " ".repeat(depth)
+        sb.append(indent).append("<node")
+        appendAttr(sb, "class", node.className?.toString().orEmpty())
+        appendAttr(sb, "resource-id", node.viewIdResourceName.orEmpty())
+        appendAttr(sb, "content-desc", node.contentDescription?.toString().orEmpty())
+        appendAttr(sb, "text", node.text?.toString().orEmpty())
+        appendAttr(sb, "clickable", node.isClickable.toString())
+        appendAttr(sb, "focusable", node.isFocusable.toString())
+        appendAttr(sb, "scrollable", node.isScrollable.toString())
+        appendAttr(sb, "enabled", node.isEnabled.toString())
+        appendAttr(sb, "long-clickable", node.isLongClickable.toString())
+        if (node.isAccessibilityFocused) appendAttr(sb, "accessibility-focused", "true")
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        appendAttr(sb, "bounds", "[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}]")
+        val childCount = node.childCount
+        if (childCount == 0) {
+            sb.append(" />\n")
+            return
+        }
+        sb.append(">\n")
+        for (i in 0 until childCount) {
+            val child = node.getChild(i) ?: continue
+            serializeNode(child, sb, depth + 1)
+        }
+        sb.append(indent).append("</node>\n")
+    }
+
+    private fun appendAttr(sb: StringBuilder, name: String, value: String) {
+        sb.append(' ').append(name).append("=\"").append(xmlEscape(value)).append('"')
+    }
+
+    private fun xmlEscape(s: String): String =
+        s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
 
     private fun doActionOnFocused(actionId: Int) {
         if (actionId < 0) {
