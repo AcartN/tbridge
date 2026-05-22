@@ -227,15 +227,16 @@ check_status() {
     elapsed=$(( $(date +%s) - started ))
     echo "ℹ️  screenrecord en cours depuis ${elapsed}s (pid=${pid}, hard cap=${max}s)"
   fi
-  # Vérif TalkBack verbose logging : sans ça, pas d'utterances captables.
-  # Le system setting accessibility_verbose_logging seul NE SUFFIT PAS — il faut
-  # aussi le toggle interne TalkBack (Paramètres avancés → Paramètres développeur
-  # → Niveau de log = verbose). Détection indirecte : tenter de capturer une
-  # ligne talkback:D récente — si vide après nav, c'est que le verbose est OFF.
+  # Auto-activer le verbose logging côté Android log system. Suffit dans la
+  # plupart des cas — pas besoin du toggle interne TalkBack Paramètres avancés
+  # (qui était considéré bloquant avant la découverte du 22 mai 2026). Idempotent.
+  "$ADB" shell "setprop log.tag.talkback VERBOSE" >/dev/null 2>&1 || true
+  # Check empirique : si malgré le setprop on a 0 ligne talkback récente,
+  # WARN (peut indiquer un toggle interne TalkBack vraiment OFF, cas rare).
   local tb_lines
-  tb_lines=$("$ADB" logcat -d -t 200 -s talkback:V 2>/dev/null | wc -l)
+  tb_lines=$("$ADB" logcat -d -t 500 2>/dev/null | grep -c "talkback:" || true)
   if (( tb_lines < 3 )); then
-    echo "WARN  TalkBack verbose logging probable OFF (logcat talkback vide). Sans ça, les utterances ne seront PAS captées dans le bundle. Activer : Paramètres → Accessibilité → TalkBack → Paramètres avancés → Paramètres développeur → Niveau de log = verbose."
+    echo "WARN  Aucune ligne talkback récente dans logcat malgré 'setprop log.tag.talkback VERBOSE'. Naviguer un peu puis re-tester. Si toujours vide, activer manuellement : Paramètres → Accessibilité → TalkBack → Paramètres avancés → Paramètres développeur → Niveau de log = Verbeux."
   fi
   return $ok
 }
