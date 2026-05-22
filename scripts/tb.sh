@@ -56,10 +56,12 @@ Inspection :
   focused              Affiche le node actuellement accessibility-focused (class,
                        label, id, clickable, bounds). À LANCER avant chaque click
                        pour confirmer qu'on est sur le bon élément.
-  dump [--raw]         Snapshot de l'arbre AccessibilityNodeInfo via tbridge
+  dump [--raw] [--all] Snapshot de l'arbre AccessibilityNodeInfo via tbridge
                        (DUMP_TREE — pas de toggle TalkBack). --raw pour voir le
-                       XML brut. À faire à chaque arrivée sur une page pour avoir
-                       le contexte structurel complet (testIds, hiérarchie, focus).
+                       XML brut. --all pour toutes les windows visibles (utile
+                       pour overlays système — dialog permission, share sheet).
+                       Sans --all : active window seule (défaut, plus prévisible
+                       — multi-window peut faire migrer le focus entre windows).
   list-actions         Log les actions disponibles (id + label) dans logcat
                        (tag TBGesture). Utile pour découvrir 'Plus d'options',
                        'Voir détails' etc. (équivalent menu TalkBack contextuel).
@@ -268,12 +270,26 @@ case "$cmd" in
   scroll-down) broadcast SCROLL_DOWN ;;
   dump)
     raw=false
-    [[ "${1:-}" == "--raw" ]] && raw=true
+    all=false
+    for arg in "$@"; do
+      case "$arg" in
+        --raw) raw=true ;;
+        --all) all=true ;;
+      esac
+    done
     # Note : ne PAS utiliser `uiautomator dump` — il passe par UiAutomation qui
     # suspend tous les a11y services pendant l'op, donc TalkBack annonce
     # "désactivé... activé" à chaque dump. Notre action DUMP_TREE sérialise depuis
-    # `getRootInActiveWindow()` directement, sans toucher TalkBack.
-    broadcast DUMP_TREE
+    # l'arbre accessibility directement, sans toucher TalkBack.
+    #
+    # --all : dump TOUTES les windows visibles (utile pour overlays système).
+    # Sans --all : active window seule (défaut, plus prévisible — le focus
+    # multi-window peut migrer entre windows et embrouiller la nav).
+    if $all; then
+      broadcast DUMP_TREE --ez all true
+    else
+      broadcast DUMP_TREE
+    fi
     sleep 0.5
     if ! "$ADB" shell run-as "$PKG" cat cache/dump.xml > /tmp/tb_dump.xml 2>/dev/null; then
       echo "ERR : pull du dump (run-as $PKG) a échoué. tbridge bien activé + lancé ?" >&2

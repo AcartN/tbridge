@@ -59,6 +59,10 @@ internal object GestureActions {
     /** Extra string requis par INPUT_TEXT. */
     const val EXTRA_TEXT = "text"
 
+    /** Extra bool optionnel pour DUMP_TREE : true = toutes les windows visibles
+     *  (overlays système inclus), false = active window seule (défaut). */
+    const val EXTRA_ALL_WINDOWS = "all"
+
     // Global actions (performGlobalAction)
     const val GLOBAL_BACK = "${PREFIX}GLOBAL_BACK"
     const val GLOBAL_HOME = "${PREFIX}GLOBAL_HOME"

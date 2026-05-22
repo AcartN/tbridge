@@ -149,7 +149,7 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.SCROLL_UP -> swipeTwoFingersVertical(fingerGoesDown = true)
             GestureActions.LIST_ACTIONS -> listActionsOnFocused()
             GestureActions.DO_ACTION -> doActionOnFocused(intent.getIntExtra(GestureActions.EXTRA_ACTION_ID, -1))
-            GestureActions.DUMP_TREE -> dumpTree()
+            GestureActions.DUMP_TREE -> dumpTree(intent.getBooleanExtra(GestureActions.EXTRA_ALL_WINDOWS, false))
             GestureActions.FOCUSED -> logFocused()
             GestureActions.INPUT_TEXT -> inputTextOnFocused(intent.getStringExtra(GestureActions.EXTRA_TEXT))
             GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
@@ -309,18 +309,25 @@ internal class TalkBackGestureService : AccessibilityService() {
         Log.d(tag, "Focused: class=$cls label='$label' id='$rid' clickable=${node.isClickable} bounds=[${bounds.left},${bounds.top}][${bounds.right},${bounds.bottom}]")
     }
 
-    private fun dumpTree() {
+    /**
+     * @param allWindows true = dump TOUTES les windows visibles via getWindows()
+     *   (utile pour voir les overlays système : dialog permission, share sheet).
+     *   false (défaut) = dump uniquement rootInActiveWindow.
+     *
+     * Pourquoi le défaut single : avec multi-window, le focus accessibility peut
+     * migrer entre windows (ex: cover home auto-défilante vole le focus d'une
+     * modal au-dessus). Single = on voit ce qui est réellement actif → plus
+     * prévisible pour la nav et les clicks par coords.
+     */
+    private fun dumpTree(allWindows: Boolean) {
         val out = File(cacheDir, "dump.xml")
-        // getWindows() retourne TOUTES les windows visibles (application + system
-        // dialogs comme permission Android, share sheet, etc.). rootInActiveWindow
-        // seul rate les overlays. On itère pour avoir le contexte complet.
-        val windows = runCatching { windows }.getOrNull().orEmpty()
         val roots = mutableListOf<AccessibilityNodeInfo>()
-        for (w in windows) {
-            w.root?.let { roots.add(it) }
+        if (allWindows) {
+            val windows = runCatching { windows }.getOrNull().orEmpty()
+            for (w in windows) {
+                w.root?.let { roots.add(it) }
+            }
         }
-        // Fallback si windows vide ou pas de roots (peut arriver) — utiliser
-        // rootInActiveWindow comme dernier recours.
         if (roots.isEmpty()) {
             rootInActiveWindow?.let { roots.add(it) }
         }
@@ -337,7 +344,7 @@ internal class TalkBackGestureService : AccessibilityService() {
         }
         sb.append("</hierarchy>\n")
         out.writeText(sb.toString())
-        Log.d(tag, "DumpTree: ${sb.length} bytes, ${roots.size} window(s) → ${out.absolutePath}")
+        Log.d(tag, "DumpTree: ${sb.length} bytes, ${roots.size} window(s), all=$allWindows → ${out.absolutePath}")
     }
 
     private fun serializeNode(node: AccessibilityNodeInfo, sb: StringBuilder, depth: Int) {
