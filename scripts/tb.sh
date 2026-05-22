@@ -40,7 +40,12 @@ Scroll TalkBack (2 doigts, naming par effet pas par direction du doigt) :
   scroll-up            Voir le contenu d'au-dessus (= geste 2 doigts vers le bas).
   scroll-down          Voir le contenu d'en-dessous (= geste 2 doigts vers le haut).
 
-Inspection / actions custom du node accessibility focused :
+Inspection :
+  dump [--raw]         uiautomator dump : résumé compact des nodes intéressants
+                       (clickable / content-desc / text / focused). --raw pour
+                       voir le XML brut. À faire à chaque arrivée sur une page
+                       pour avoir le contexte structurel complet (testIds,
+                       hiérarchie, focus actuel).
   list-actions         Log les actions disponibles (id + label) dans logcat
                        (tag TBGesture). Utile pour découvrir 'Plus d'options',
                        'Voir détails' etc. (équivalent menu TalkBack contextuel).
@@ -158,6 +163,19 @@ case "$cmd" in
   longclick) broadcast LONG_CLICK_FOCUSED ;;
   scroll-up)   broadcast SCROLL_UP ;;
   scroll-down) broadcast SCROLL_DOWN ;;
+  dump)
+    raw=false
+    [[ "${1:-}" == "--raw" ]] && raw=true
+    "$ADB" shell uiautomator dump /sdcard/tb_dump.xml >/dev/null 2>&1 || {
+      echo "ERR : uiautomator dump a échoué" >&2; exit 1; }
+    "$ADB" shell cat /sdcard/tb_dump.xml > /tmp/tb_dump.xml
+    "$ADB" shell rm /sdcard/tb_dump.xml >/dev/null 2>&1
+    if $raw; then
+      cat /tmp/tb_dump.xml
+    else
+      python3 "$(dirname "$0")/parse_dump.py" /tmp/tb_dump.xml
+    fi
+    ;;
   list-actions)
     "$ADB" logcat -c
     broadcast LIST_ACTIONS
