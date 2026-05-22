@@ -227,6 +227,16 @@ check_status() {
     elapsed=$(( $(date +%s) - started ))
     echo "ℹ️  screenrecord en cours depuis ${elapsed}s (pid=${pid}, hard cap=${max}s)"
   fi
+  # Vérif TalkBack verbose logging : sans ça, pas d'utterances captables.
+  # Le system setting accessibility_verbose_logging seul NE SUFFIT PAS — il faut
+  # aussi le toggle interne TalkBack (Paramètres avancés → Paramètres développeur
+  # → Niveau de log = verbose). Détection indirecte : tenter de capturer une
+  # ligne talkback:D récente — si vide après nav, c'est que le verbose est OFF.
+  local tb_lines
+  tb_lines=$("$ADB" logcat -d -t 200 -s talkback:V 2>/dev/null | wc -l)
+  if (( tb_lines < 3 )); then
+    echo "WARN  TalkBack verbose logging probable OFF (logcat talkback vide). Sans ça, les utterances ne seront PAS captées dans le bundle. Activer : Paramètres → Accessibilité → TalkBack → Paramètres avancés → Paramètres développeur → Niveau de log = verbose."
+  fi
   return $ok
 }
 
