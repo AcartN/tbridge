@@ -152,6 +152,7 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.DUMP_TREE -> dumpTree(intent.getBooleanExtra(GestureActions.EXTRA_ALL_WINDOWS, false))
             GestureActions.FOCUSED -> logFocused()
             GestureActions.INPUT_TEXT -> inputTextOnFocused(intent.getStringExtra(GestureActions.EXTRA_TEXT))
+            GestureActions.ACTIVATE_BY_ID -> activateById(intent.getStringExtra(GestureActions.EXTRA_VIEW_ID))
             GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
             GestureActions.GLOBAL_HOME -> performGlobalLogged(GLOBAL_ACTION_HOME, "GLOBAL_HOME")
             GestureActions.GLOBAL_RECENTS -> performGlobalLogged(GLOBAL_ACTION_RECENTS, "GLOBAL_RECENTS")
@@ -277,6 +278,71 @@ internal class TalkBackGestureService : AccessibilityService() {
      * dans un format compatible avec celui produit par `uiautomator dump` (consommable par
      * scripts/parse_dump.py). Pas de UiAutomation = TalkBack n'est pas suspendu.
      */
+    /**
+     * Trouve un node par viewId et l'active. Tente ACTION_CLICK direct ;
+     * fallback double-tap aux bounds si refusé. Plus fiable que tap par coords
+     * quand le focus accessibility est volatile (cover auto-défilante volant
+     * le focus, modal mal isolée, etc.).
+     */
+    private fun activateById(viewId: String?) {
+        if (viewId == null) {
+            Log.w(tag, "ActivateById: missing --es view_id extra")
+            return
+        }
+        val root = rootInActiveWindow
+        if (root == null) {
+            Log.w(tag, "ActivateById: rootInActiveWindow null")
+            return
+        }
+        // Accepte forme courte ('avatar') ou full ('fr.tf1.mytf1:id/avatar').
+        // Compose `Modifier.testTag` stocke souvent l'id sans préfixe package
+        // (resource-id="avatar" direct), forme que `findAccessibilityNodeInfosByViewId`
+        // gère mal. Donc on fait un walk manuel qui matche soit la full id soit
+        // le suffixe après '/'.
+        val nodes = mutableListOf<AccessibilityNodeInfo>()
+        findByIdSuffix(root, viewId, nodes)
+        if (nodes.isEmpty()) {
+            Log.w(tag, "ActivateById: no node found matching '$viewId'")
+            return
+        }
+        val node = nodes[0]
+        // 1. Tenter ACTION_CLICK direct
+        if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            Log.d(tag, "ActivateById $viewId: ACTION_CLICK → true")
+            return
+        }
+        // 2. Fallback : forcer le focus accessibility sur ce node, puis double-tap
+        // au CENTRE ÉCRAN (TalkBack convertit le double-tap en activate du focused).
+        // Important : NE PAS double-tap aux bounds du node — si entre les 2 taps
+        // le focus migre (cover auto-défilante), on activerait le node sous le
+        // doigt au lieu de notre cible. En forçant ACCESSIBILITY_FOCUS d'abord
+        // et en tapant ailleurs, on contourne le risque.
+        val focusOk = node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS)
+        val (w, h) = screenSize()
+        val cx = w / 2f
+        val cy = h / 2f
+        val tap1 = Path().apply { moveTo(cx, cy); lineTo(cx, cy) }
+        val tap2 = Path().apply { moveTo(cx, cy); lineTo(cx, cy) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(tap1, 0L, 50L))
+            .addStroke(GestureDescription.StrokeDescription(tap2, 150L, 50L))
+            .build()
+        dispatchGestureLogged(gesture, "activate-by-id $viewId [click=false→focus=$focusOk→double-tap center]")
+    }
+
+    /** Walk récursif qui ajoute aux résultats les nodes dont viewIdResourceName
+     *  == viewId OU se termine par "/viewId" OU == viewId brut (Compose testTag). */
+    private fun findByIdSuffix(node: AccessibilityNodeInfo, viewId: String, out: MutableList<AccessibilityNodeInfo>) {
+        val rid = node.viewIdResourceName
+        if (rid != null && (rid == viewId || rid.endsWith("/$viewId") || rid == viewId.substringAfter(":id/"))) {
+            out.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            findByIdSuffix(child, viewId, out)
+        }
+    }
+
     private fun inputTextOnFocused(text: String?) {
         if (text == null) {
             Log.w(tag, "InputText: missing --es text extra")

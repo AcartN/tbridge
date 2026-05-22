@@ -63,6 +63,17 @@ internal object GestureActions {
      *  (overlays système inclus), false = active window seule (défaut). */
     const val EXTRA_ALL_WINDOWS = "all"
 
+    /**
+     * Trouve le node via findAccessibilityNodeInfosByViewId(extra `view_id`)
+     * puis l'active : essai ACTION_CLICK direct, fallback double-tap aux bounds
+     * si false. Plus fiable que tap par coords quand le focus est volatile
+     * (cover auto-défilante qui migre le focus régulièrement).
+     */
+    const val ACTIVATE_BY_ID = "${PREFIX}ACTIVATE_BY_ID"
+
+    /** Extra string requis par ACTIVATE_BY_ID : viewId (court ou avec package). */
+    const val EXTRA_VIEW_ID = "view_id"
+
     // Global actions (performGlobalAction)
     const val GLOBAL_BACK = "${PREFIX}GLOBAL_BACK"
     const val GLOBAL_HOME = "${PREFIX}GLOBAL_HOME"
@@ -93,6 +104,7 @@ internal object GestureActions {
         DUMP_TREE,
         FOCUSED,
         INPUT_TEXT,
+        ACTIVATE_BY_ID,
         GLOBAL_BACK,
         GLOBAL_HOME,
         GLOBAL_RECENTS,

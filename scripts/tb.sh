@@ -69,6 +69,11 @@ Inspection :
   input <text>         Saisit <text> dans le node focused via ACTION_SET_TEXT
                        (requiert un EditText/TextInput). Le contenu existant est
                        remplacé. Pré-requis : activate le champ d'abord.
+  activate-by-id <id>  Trouve le node par viewId (findAccessibilityNodeInfosByViewId)
+                       puis active : ACTION_CLICK direct, fallback double-tap aux
+                       bounds. Plus fiable que tap par coords quand le focus est
+                       volatile (cover auto-défilante, etc.). Accepte forme courte
+                       ('avatar') ou full ('fr.tf1.mytf1:id/avatar').
 
 Actions globales système (performGlobalAction) :
   back                 = bouton retour système
@@ -317,6 +322,13 @@ case "$cmd" in
       echo "Usage: input <text>" >&2; exit 1
     fi
     broadcast INPUT_TEXT --es text "$*"
+    ;;
+  activate-by-id)
+    if [[ $# -ne 1 ]]; then
+      echo "Usage: activate-by-id <view_id>  (forme courte 'avatar' ou full 'fr.tf1.mytf1:id/avatar')" >&2
+      exit 1
+    fi
+    broadcast ACTIVATE_BY_ID --es view_id "$1"
     ;;
   list-actions)
     "$ADB" logcat -c
