@@ -38,7 +38,11 @@ Navigation TalkBack (peut être enchaîné via [N]):
   tap [x] [y]          Tap simple (défaut = centre écran).
   double-tap [x] [y]   Double-tap atomique (~150ms entre les 2). Avec TalkBack ON,
                        active le node accessibility-focused (équivalent geste user).
-                       Utile quand ACTION_CLICK renvoie false.
+                       Utile quand ACTION_CLICK renvoie false. Sans coords =
+                       centre écran (TalkBack n'a pas besoin des bounds — peu importe).
+  activate             Alias sémantique de double-tap (sans coords) : "activate
+                       le node currently focused". À privilégier dans les workflows
+                       lisibles où l'intent est l'activation, pas le geste exact.
 
 Actions (toujours unitaires — JAMAIS chaînées, raisonne avant) :
   click                Active l'élément accessibility focused (= double-tap TalkBack).
@@ -60,6 +64,9 @@ Inspection :
                        (tag TBGesture). Utile pour découvrir 'Plus d'options',
                        'Voir détails' etc. (équivalent menu TalkBack contextuel).
   do-action <id>       Exécute l'action avec cet id sur le node focused.
+  input <text>         Saisit <text> dans le node focused via ACTION_SET_TEXT
+                       (requiert un EditText/TextInput). Le contenu existant est
+                       remplacé. Pré-requis : activate le champ d'abord.
 
 Actions globales système (performGlobalAction) :
   back                 = bouton retour système
@@ -242,13 +249,16 @@ case "$cmd" in
       exit 1
     fi
     ;;
-  double-tap)
+  double-tap|activate)
+    # activate = alias sémantique : avec TalkBack ON, double-tap n'importe où
+    # active le node accessibility-focused (geste user standard "activate").
+    # Le centre écran (défaut) suffit donc, pas besoin des bounds.
     if [[ $# -eq 0 ]]; then
       broadcast DOUBLE_TAP
     elif [[ $# -eq 2 ]]; then
       broadcast DOUBLE_TAP --ei x "$1" --ei y "$2"
     else
-      echo "Usage: double-tap [x y]" >&2
+      echo "Usage: $cmd [x y]" >&2
       exit 1
     fi
     ;;
@@ -285,6 +295,12 @@ case "$cmd" in
     broadcast FOCUSED
     sleep 0.4
     "$ADB" logcat -d -s TBGesture:D 2>&1 | grep "Focused:" | tail -1 || echo "(aucun log — vérifier tbridge + TalkBack actifs)"
+    ;;
+  input)
+    if [[ $# -lt 1 ]]; then
+      echo "Usage: input <text>" >&2; exit 1
+    fi
+    broadcast INPUT_TEXT --es text "$*"
     ;;
   list-actions)
     "$ADB" logcat -c

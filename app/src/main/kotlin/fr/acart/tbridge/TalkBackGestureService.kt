@@ -151,6 +151,7 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.DO_ACTION -> doActionOnFocused(intent.getIntExtra(GestureActions.EXTRA_ACTION_ID, -1))
             GestureActions.DUMP_TREE -> dumpTree()
             GestureActions.FOCUSED -> logFocused()
+            GestureActions.INPUT_TEXT -> inputTextOnFocused(intent.getStringExtra(GestureActions.EXTRA_TEXT))
             GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
             GestureActions.GLOBAL_HOME -> performGlobalLogged(GLOBAL_ACTION_HOME, "GLOBAL_HOME")
             GestureActions.GLOBAL_RECENTS -> performGlobalLogged(GLOBAL_ACTION_RECENTS, "GLOBAL_RECENTS")
@@ -276,6 +277,24 @@ internal class TalkBackGestureService : AccessibilityService() {
      * dans un format compatible avec celui produit par `uiautomator dump` (consommable par
      * scripts/parse_dump.py). Pas de UiAutomation = TalkBack n'est pas suspendu.
      */
+    private fun inputTextOnFocused(text: String?) {
+        if (text == null) {
+            Log.w(tag, "InputText: missing --es text extra")
+            return
+        }
+        val node = findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        if (node == null) {
+            Log.w(tag, "InputText: no accessibility-focused node")
+            return
+        }
+        val bundle = android.os.Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+        val nodeLabel = node.contentDescription ?: node.text ?: "?"
+        Log.d(tag, "InputText ${text.length} chars on node '$nodeLabel' → $ok")
+    }
+
     private fun logFocused() {
         val node = findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
         if (node == null) {
@@ -292,19 +311,33 @@ internal class TalkBackGestureService : AccessibilityService() {
 
     private fun dumpTree() {
         val out = File(cacheDir, "dump.xml")
-        val root = rootInActiveWindow
-        if (root == null) {
-            Log.w(tag, "DumpTree: rootInActiveWindow is null")
+        // getWindows() retourne TOUTES les windows visibles (application + system
+        // dialogs comme permission Android, share sheet, etc.). rootInActiveWindow
+        // seul rate les overlays. On itère pour avoir le contexte complet.
+        val windows = runCatching { windows }.getOrNull().orEmpty()
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        for (w in windows) {
+            w.root?.let { roots.add(it) }
+        }
+        // Fallback si windows vide ou pas de roots (peut arriver) — utiliser
+        // rootInActiveWindow comme dernier recours.
+        if (roots.isEmpty()) {
+            rootInActiveWindow?.let { roots.add(it) }
+        }
+        if (roots.isEmpty()) {
+            Log.w(tag, "DumpTree: no window root accessible")
             out.writeText("<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n<hierarchy/>\n")
             return
         }
         val sb = StringBuilder(64 * 1024)
         sb.append("<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n")
         sb.append("<hierarchy rotation=\"0\">\n")
-        serializeNode(root, sb, depth = 1)
+        for (root in roots) {
+            serializeNode(root, sb, depth = 1)
+        }
         sb.append("</hierarchy>\n")
         out.writeText(sb.toString())
-        Log.d(tag, "DumpTree: ${sb.length} bytes → ${out.absolutePath}")
+        Log.d(tag, "DumpTree: ${sb.length} bytes, ${roots.size} window(s) → ${out.absolutePath}")
     }
 
     private fun serializeNode(node: AccessibilityNodeInfo, sb: StringBuilder, depth: Int) {

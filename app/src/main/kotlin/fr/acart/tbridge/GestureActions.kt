@@ -48,6 +48,17 @@ internal object GestureActions {
     /** Extra int requis par DO_ACTION : l'ID de l'action (cf. output de LIST_ACTIONS). */
     const val EXTRA_ACTION_ID = "action_id"
 
+    /**
+     * Saisit du texte dans le node accessibility-focused via ACTION_SET_TEXT.
+     * Le focused doit être un EditText / TextInput (autres nodes renvoient false).
+     * Remplace le contenu existant. Pré-requis : naviguer au champ via right/left
+     * puis activate (le champ doit avoir l'input focus, pas juste l'accessibility focus).
+     */
+    const val INPUT_TEXT = "${PREFIX}INPUT_TEXT"
+
+    /** Extra string requis par INPUT_TEXT. */
+    const val EXTRA_TEXT = "text"
+
     // Global actions (performGlobalAction)
     const val GLOBAL_BACK = "${PREFIX}GLOBAL_BACK"
     const val GLOBAL_HOME = "${PREFIX}GLOBAL_HOME"
@@ -77,6 +88,7 @@ internal object GestureActions {
         DO_ACTION,
         DUMP_TREE,
         FOCUSED,
+        INPUT_TEXT,
         GLOBAL_BACK,
         GLOBAL_HOME,
         GLOBAL_RECENTS,
