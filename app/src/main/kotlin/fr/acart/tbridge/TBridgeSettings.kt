@@ -53,6 +53,13 @@ internal class TBridgeSettings(context: Context) {
         get() = prefs.getBoolean(KEY_SHELL_ONLY, true)
         set(value) = prefs.edit().putBoolean(KEY_SHELL_ONLY, value).apply()
 
+    /** Si true (default), le service appelle disableSelf() dès qu'un broadcast est
+     *  rejeté pour cause de fenêtre expirée (ou détecte expiry à onServiceConnected).
+     *  L'user devra repasser par Paramètres → Accessibilité pour le réactiver. */
+    var autoDisableOnExpiry: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_DISABLE_ON_EXPIRY, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_DISABLE_ON_EXPIRY, value).apply()
+
     val token: String
         get() = prefs.getString(KEY_TOKEN, null) ?: regenerateToken()
 
@@ -92,6 +99,7 @@ internal class TBridgeSettings(context: Context) {
         const val KEY_ACTIVE_UNTIL: String = "active_until_ms"
         const val KEY_LAST_DURATION: String = "last_duration_ms"
         const val KEY_SHELL_ONLY: String = "shell_only"
+        const val KEY_AUTO_DISABLE_ON_EXPIRY: String = "auto_disable_on_expiry"
         const val KEY_TOKEN: String = "token"
         const val INTENT_EXTRA_TOKEN: String = "token"
 

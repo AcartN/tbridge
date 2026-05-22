@@ -34,6 +34,12 @@
     <string name="settings_title">Sécurité</string>
     <string name="shell_only_switch_label">Restreindre à adb shell (recommandé)</string>
     <string name="shell_only_hint">Si activé, le receiver requiert la permission Android WRITE_SECURE_SETTINGS pour accepter un broadcast — détenue par adb shell, pas par les apps tierces. Si désactivé, toute app peut envoyer (le token reste comme protection).</string>
+    <string name="auto_disable_switch_label">Désactiver le service à l\'expiration</string>
+    <string name="auto_disable_hint">Si activé, le service AccessibilityService tbridge se désactive lui-même (disableSelf) dès que la fenêtre d\'écoute expire. Il faudra repasser par Paramètres pour le réactiver. Plus restrictif.</string>
+    <string name="disable_service">Désactiver le service tbridge (Android)</string>
+    <string name="disable_service_hint">Coupe complètement le service AccessibilityService. Pour le réactiver, repasse par Paramètres → Accessibilité → tbridge.</string>
+    <string name="toast_service_disabled">Service AccessibilityService désactivé</string>
+    <string name="toast_service_unavailable">Service AccessibilityService pas actif sur le device</string>
     <string name="token_label">Token (à inclure dans chaque broadcast)</string>
     <string name="copy_token">Copier</string>
     <string name="regenerate_token">Régénérer</string>
@@ -42,8 +48,8 @@
 
     <!-- Biometric -->
     <string name="guard_activate_title">Activer l\'écoute des broadcasts</string>
-    <string name="guard_deactivate_title">Désactiver l\'écoute</string>
-    <string name="guard_shell_only_title">Modifier la restriction shell</string>
+    <string name="guard_shell_only_loosen_title">Retirer la restriction shell</string>
+    <string name="guard_auto_disable_off_title">Désactiver l\'auto-disable à l\'expiration</string>
     <string name="guard_regenerate_title">Régénérer le token</string>
     <string name="guard_subtitle">Confirme avec empreinte ou code de verrouillage</string>
 

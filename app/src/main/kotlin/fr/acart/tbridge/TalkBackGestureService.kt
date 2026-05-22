@@ -50,6 +50,10 @@ internal class TalkBackGestureService : AccessibilityService() {
 
             if (!settings.isListeningActive) {
                 Log.d(tag, "Ignored ($action) : listening window expired or never started")
+                if (settings.autoDisableOnExpiry && settings.listenActiveUntilMs > 0) {
+                    Log.d(tag, "autoDisableOnExpiry triggered → disableSelf()")
+                    disableSelf()
+                }
                 return
             }
             val incomingToken = intent.getStringExtra(TBridgeSettings.INTENT_EXTRA_TOKEN)
@@ -75,8 +79,15 @@ internal class TalkBackGestureService : AccessibilityService() {
         super.onServiceConnected()
         settings = TBridgeSettings(this)
         settings.registerListener(prefsListener)
+        instance = this
         registerReceiverWithCurrentMode()
         Log.d(tag, "Service connected, receiver registered for ${GestureActions.ALL.size} actions (shellOnly=${settings.shellOnly})")
+
+        // Si on arrive avec une fenêtre déjà expirée + autoDisable ON → kill direct
+        if (settings.autoDisableOnExpiry && !settings.isListeningActive && settings.listenActiveUntilMs > 0) {
+            Log.d(tag, "onServiceConnected with expired window + autoDisable → disableSelf()")
+            disableSelf()
+        }
     }
 
     private fun registerReceiverWithCurrentMode() {
@@ -103,7 +114,17 @@ internal class TalkBackGestureService : AccessibilityService() {
                 .onFailure { Log.w(tag, "Receiver was not registered: ${it.message}") }
             receiverRegistered = false
         }
+        if (instance === this) instance = null
         super.onDestroy()
+    }
+
+    companion object {
+        /** Référence weak-ish exposée pour permettre à MainActivity de déclencher
+         *  `disableSelf()` sans passer par un broadcast (qui requerrait token etc.).
+         *  Mise à jour en onServiceConnected / onDestroy. */
+        @Volatile
+        var instance: TalkBackGestureService? = null
+            private set
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
