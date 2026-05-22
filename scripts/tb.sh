@@ -35,8 +35,12 @@ Setup:
   status               Vérifie tbridge activé + TalkBack activé + fenêtre d'écoute
                        tbridge active. Exit non-zero si un check échoue.
   talkback-on          Active TalkBack via Settings.Secure (ajoute son ComponentName
-                       à enabled_accessibility_services).
+                       à enabled_accessibility_services) + setprop verbose log.
   talkback-off         Désactive TalkBack (le retire de enabled_accessibility_services).
+  talkback-restart     am force-stop com.google.android.marvin.talkback (Android
+                       respawn auto). À utiliser après setprop log.tag.talkback
+                       VERBOSE pour que TalkBack pick la config (le toggle du
+                       service ne suffit pas si le process est déjà up).
 
 Navigation TalkBack (peut être enchaîné via [N]):
   right [N]            N swipe-right (= focus → élément suivant). N défaut 1.
@@ -227,16 +231,14 @@ check_status() {
     elapsed=$(( $(date +%s) - started ))
     echo "ℹ️  screenrecord en cours depuis ${elapsed}s (pid=${pid}, hard cap=${max}s)"
   fi
-  # Auto-activer le verbose logging côté Android log system. Suffit dans la
-  # plupart des cas — pas besoin du toggle interne TalkBack Paramètres avancés
-  # (qui était considéré bloquant avant la découverte du 22 mai 2026). Idempotent.
+  # Auto-activer le verbose logging côté Android log system. Idempotent.
   "$ADB" shell "setprop log.tag.talkback VERBOSE" >/dev/null 2>&1 || true
-  # Check empirique : si malgré le setprop on a 0 ligne talkback récente,
-  # WARN (peut indiquer un toggle interne TalkBack vraiment OFF, cas rare).
+  # Check empirique : si on a 0 ligne talkback récente, WARN avec suggestion
+  # talkback-restart (le process doit respawn pour pick up le setprop).
   local tb_lines
   tb_lines=$("$ADB" logcat -d -t 500 2>/dev/null | grep -c "talkback:" || true)
   if (( tb_lines < 3 )); then
-    echo "WARN  Aucune ligne talkback récente dans logcat malgré 'setprop log.tag.talkback VERBOSE'. Naviguer un peu puis re-tester. Si toujours vide, activer manuellement : Paramètres → Accessibilité → TalkBack → Paramètres avancés → Paramètres développeur → Niveau de log = Verbeux."
+    echo "WARN  Aucune ligne talkback récente dans logcat. Lance './tb.sh talkback-restart' pour que TalkBack respawn et pick up 'setprop log.tag.talkback VERBOSE'. Sans ça les utterances ne seront pas captées dans le bundle."
   fi
   return $ok
 }
@@ -310,10 +312,15 @@ record_cleanup() {
 utterances_dump() {
   # Filtre `talkback` log + extrait `text=...` de chaque ligne speakWithSpeechCachePlayer.
   # Format brut : `D talkback: SpeechCacheManager: speakWithSpeechCachePlayer:speechInfo=SpeechInfo{utteranceId=X, text=..., ...}`
-  "$ADB" logcat -d -s talkback:V 2>&1 \
+  #
+  # Note 22 mai 2026 : `logcat -d -s talkback:V` rate les lignes de niveau Debug
+  # sur certains devices (logcat priority logic). On utilise `logcat -d` brut +
+  # grep textuel pour matcher fiablement. `grep -oE 'text=[^,]+'` extrait juste
+  # la portion utile, plus simple que sed.
+  "$ADB" logcat -d 2>&1 \
     | grep "speakWithSpeechCachePlayer" \
-    | sed -E 's/.*text=([^,]+),.*/\1/' \
-    | grep -v "speakWithSpeechCachePlayer"  # filtre lignes où le sed a pas matché
+    | grep -oE 'text=[^,]+' \
+    | sed 's/^text=//'
 }
 
 TALKBACK_COMPONENT="com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
@@ -324,6 +331,10 @@ talkback_on() {
   [[ "$current" == "null" ]] && current=""
   if echo "$current" | grep -q "com.google.android.marvin.talkback"; then
     echo "TalkBack déjà activé"
+    # Setprop + force-stop pour s'assurer que le verbose log marche (le toggle
+    # du service ne suffit pas si le process est déjà up et le setprop a été
+    # fait après son démarrage — il faut le respawn pour qu'il pick up).
+    "$ADB" shell "setprop log.tag.talkback VERBOSE" >/dev/null 2>&1 || true
     return 0
   fi
   local new
@@ -332,9 +343,27 @@ talkback_on() {
   else
     new="${current}:${TALKBACK_COMPONENT}"
   fi
+  "$ADB" shell "setprop log.tag.talkback VERBOSE" >/dev/null 2>&1 || true
   "$ADB" shell settings put secure enabled_accessibility_services "$new" >/dev/null
   "$ADB" shell settings put secure accessibility_enabled 1 >/dev/null
   echo "TalkBack activé"
+}
+
+talkback_restart() {
+  # force-stop puis Android relance automatiquement (service activé dans
+  # enabled_accessibility_services). À utiliser après setprop log.tag.talkback
+  # quand TalkBack ne pick pas la nouvelle config — le respawn pick up.
+  # Note : contrairement à force-stop sur tbridge (qui DÉSACTIVE le service),
+  # force-stop sur TalkBack (system app Google) est safe — Android la respawn.
+  "$ADB" shell "am force-stop com.google.android.marvin.talkback" 2>/dev/null || true
+  sleep 2
+  # Re-check
+  if "$ADB" shell settings get secure enabled_accessibility_services 2>/dev/null | grep -q "talkback"; then
+    echo "TalkBack restarted (respawn auto Android)"
+  else
+    echo "WARN : TalkBack absent de enabled_accessibility_services après restart. Re-run tb.sh talkback-on."
+    return 1
+  fi
 }
 
 talkback_off() {
@@ -355,8 +384,9 @@ talkback_off() {
 case "$cmd" in
   init)         fetch_token ;;
   status)       check_status ;;
-  talkback-on)  talkback_on ;;
-  talkback-off) talkback_off ;;
+  talkback-on)      talkback_on ;;
+  talkback-off)     talkback_off ;;
+  talkback-restart) talkback_restart ;;
   record)
     sub="${1:-}"; shift || true
     case "$sub" in
