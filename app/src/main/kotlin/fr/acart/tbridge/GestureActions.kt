@@ -11,7 +11,18 @@ internal object GestureActions {
     const val TAP = "${PREFIX}TAP"
     const val CLICK_FOCUSED = "${PREFIX}CLICK_FOCUSED"
     const val LONG_CLICK_FOCUSED = "${PREFIX}LONG_CLICK_FOCUSED"
-    const val SWIPE_TWO_FINGERS_UP = "${PREFIX}SWIPE_TWO_FINGERS_UP"
+    /** SCROLL_DOWN = voir le contenu en-dessous = geste 2 doigts du bas vers le haut. */
+    const val SCROLL_DOWN = "${PREFIX}SCROLL_DOWN"
+
+    /** SCROLL_UP = voir le contenu au-dessus = geste 2 doigts du haut vers le bas. */
+    const val SCROLL_UP = "${PREFIX}SCROLL_UP"
+
+    /** Inspection / actions custom du node accessibility-focused. */
+    const val LIST_ACTIONS = "${PREFIX}LIST_ACTIONS"
+    const val DO_ACTION = "${PREFIX}DO_ACTION"
+
+    /** Extra int requis par DO_ACTION : l'ID de l'action (cf. output de LIST_ACTIONS). */
+    const val EXTRA_ACTION_ID = "action_id"
 
     // Global actions (performGlobalAction)
     const val GLOBAL_BACK = "${PREFIX}GLOBAL_BACK"
@@ -35,7 +46,10 @@ internal object GestureActions {
         TAP,
         CLICK_FOCUSED,
         LONG_CLICK_FOCUSED,
-        SWIPE_TWO_FINGERS_UP,
+        SCROLL_DOWN,
+        SCROLL_UP,
+        LIST_ACTIONS,
+        DO_ACTION,
         GLOBAL_BACK,
         GLOBAL_HOME,
         GLOBAL_RECENTS,

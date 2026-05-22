@@ -36,8 +36,15 @@ Actions (toujours unitaires — JAMAIS chaînées, raisonne avant) :
   click                Active l'élément accessibility focused (= double-tap TalkBack).
   longclick            Long-clic sur l'élément focused.
 
-Scroll TalkBack (2 doigts) :
-  two-up               Scroll contenu vers le haut.
+Scroll TalkBack (2 doigts, naming par effet pas par direction du doigt) :
+  scroll-up            Voir le contenu d'au-dessus (= geste 2 doigts vers le bas).
+  scroll-down          Voir le contenu d'en-dessous (= geste 2 doigts vers le haut).
+
+Inspection / actions custom du node accessibility focused :
+  list-actions         Log les actions disponibles (id + label) dans logcat
+                       (tag TBGesture). Utile pour découvrir 'Plus d'options',
+                       'Voir détails' etc. (équivalent menu TalkBack contextuel).
+  do-action <id>       Exécute l'action avec cet id sur le node focused.
 
 Actions globales système (performGlobalAction) :
   back                 = bouton retour système
@@ -149,7 +156,26 @@ case "$cmd" in
     ;;
   click)     broadcast CLICK_FOCUSED ;;
   longclick) broadcast LONG_CLICK_FOCUSED ;;
-  two-up)    broadcast SWIPE_TWO_FINGERS_UP ;;
+  scroll-up)   broadcast SCROLL_UP ;;
+  scroll-down) broadcast SCROLL_DOWN ;;
+  list-actions)
+    "$ADB" logcat -c
+    broadcast LIST_ACTIONS
+    sleep 0.8
+    echo "=== Actions du node accessibility-focused ==="
+    "$ADB" logcat -d -s TBGesture:D 2>&1 | grep "ListActions:" || echo "(aucun log — re-vérifier qu'un élément est focused)"
+    ;;
+  do-action)
+    if [[ $# -ne 1 ]]; then
+      echo "Usage: do-action <id>  (récupère l'id via './tb.sh list-actions')" >&2
+      exit 1
+    fi
+    "$ADB" logcat -c
+    broadcast DO_ACTION --ei action_id "$1"
+    sleep 0.8
+    echo "=== Résultat ==="
+    "$ADB" logcat -d -s TBGesture:D 2>&1 | grep "DoAction" | tail -1 || echo "(pas de log — re-vérifier qu'un élément est focused)"
+    ;;
   back)            broadcast GLOBAL_BACK ;;
   home)            broadcast GLOBAL_HOME ;;
   recents)         broadcast GLOBAL_RECENTS ;;

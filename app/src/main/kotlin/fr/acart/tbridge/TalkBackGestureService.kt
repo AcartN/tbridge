@@ -140,7 +140,12 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.TAP -> handleTap(intent)
             GestureActions.CLICK_FOCUSED -> performOnFocused(AccessibilityNodeInfo.ACTION_CLICK, "ACTION_CLICK")
             GestureActions.LONG_CLICK_FOCUSED -> performOnFocused(AccessibilityNodeInfo.ACTION_LONG_CLICK, "ACTION_LONG_CLICK")
-            GestureActions.SWIPE_TWO_FINGERS_UP -> swipeTwoFingersUp()
+            // SCROLL_DOWN (= voir le contenu d'en bas) = geste 2 doigts du bas vers le haut.
+            GestureActions.SCROLL_DOWN -> swipeTwoFingersVertical(fingerGoesDown = false)
+            // SCROLL_UP (= voir le contenu d'en haut) = geste 2 doigts du haut vers le bas.
+            GestureActions.SCROLL_UP -> swipeTwoFingersVertical(fingerGoesDown = true)
+            GestureActions.LIST_ACTIONS -> listActionsOnFocused()
+            GestureActions.DO_ACTION -> doActionOnFocused(intent.getIntExtra(GestureActions.EXTRA_ACTION_ID, -1))
             GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
             GestureActions.GLOBAL_HOME -> performGlobalLogged(GLOBAL_ACTION_HOME, "GLOBAL_HOME")
             GestureActions.GLOBAL_RECENTS -> performGlobalLogged(GLOBAL_ACTION_RECENTS, "GLOBAL_RECENTS")
@@ -195,26 +200,71 @@ internal class TalkBackGestureService : AccessibilityService() {
         dispatchSingleStrokeGesture(x, y, x, y, durationMs = 50L)
     }
 
-    private fun swipeTwoFingersUp() {
+    /**
+     * Geste 2 doigts vertical.
+     * @param fingerGoesDown true = les doigts se déplacent du haut vers le bas (= scroll UP, voir
+     *                        contenu d'en haut), false = doigts du bas vers le haut (= scroll DOWN).
+     */
+    private fun swipeTwoFingersVertical(fingerGoesDown: Boolean) {
         val (w, h) = screenSize()
-        val cy1 = h * 0.7f
-        val cy2 = h * 0.3f
+        val yStart: Float
+        val yEnd: Float
+        if (fingerGoesDown) {
+            yStart = h * 0.3f
+            yEnd = h * 0.7f
+        } else {
+            yStart = h * 0.7f
+            yEnd = h * 0.3f
+        }
         val x1 = w * 0.4f
         val x2 = w * 0.6f
 
         val path1 = Path().apply {
-            moveTo(x1, cy1)
-            lineTo(x1, cy2)
+            moveTo(x1, yStart)
+            lineTo(x1, yEnd)
         }
         val path2 = Path().apply {
-            moveTo(x2, cy1)
-            lineTo(x2, cy2)
+            moveTo(x2, yStart)
+            lineTo(x2, yEnd)
         }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path1, 0L, 200L))
             .addStroke(GestureDescription.StrokeDescription(path2, 0L, 200L))
             .build()
-        dispatchGestureLogged(gesture, label = "SWIPE_TWO_FINGERS_UP")
+        // Le label loggé reflète l'EFFET (scroll), pas la direction physique du doigt.
+        val label = if (fingerGoesDown) "SCROLL_UP" else "SCROLL_DOWN"
+        dispatchGestureLogged(gesture, label = label)
+    }
+
+    private fun listActionsOnFocused() {
+        val node = findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        if (node == null) {
+            Log.w(tag, "ListActions: no accessibility-focused node")
+            return
+        }
+        val nodeLabel = node.contentDescription ?: node.text ?: "?"
+        Log.d(tag, "ListActions: node='$nodeLabel' class=${node.className} actions=${node.actionList.size}")
+        node.actionList.forEachIndexed { idx, action ->
+            // action.id est l'int à passer à DO_ACTION. action.label est le label visible
+            // (souvent null pour les actions standard ; non-null pour les actions custom).
+            val labelText = action.label ?: "(no label)"
+            Log.d(tag, "ListActions: [$idx] id=${action.id} label='$labelText'")
+        }
+    }
+
+    private fun doActionOnFocused(actionId: Int) {
+        if (actionId < 0) {
+            Log.w(tag, "DoAction: invalid action_id extra (use --ei action_id <int>)")
+            return
+        }
+        val node = findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        if (node == null) {
+            Log.w(tag, "DoAction id=$actionId : no accessibility-focused node")
+            return
+        }
+        val ok = node.performAction(actionId)
+        val nodeLabel = node.contentDescription ?: node.text ?: "?"
+        Log.d(tag, "DoAction id=$actionId on node '$nodeLabel' → $ok")
     }
 
     private fun dispatchSingleStrokeGesture(
