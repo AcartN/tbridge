@@ -17,6 +17,13 @@ TOKEN_FILE="${HOME}/.tbridge-token"
 # Délai entre 2 broadcasts dans une commande multi-N. Doit laisser TalkBack vocaliser
 # l'élément focused entre 2 swipes. ~700ms est un bon compromis.
 INTER_DELAY="${TBRIDGE_INTER_DELAY:-0.7}"
+# State files pour `record` (PID + path + timestamp + max). Locaux côté host.
+RECORD_PID_FILE="/tmp/tb_record.pid"
+RECORD_PATH_FILE="/tmp/tb_record.path"
+RECORD_MAX_FILE="/tmp/tb_record.max"
+RECORD_STARTED_FILE="/tmp/tb_record.started"
+# Hard cap par défaut (5 min). Override via --max ou TBRIDGE_RECORD_MAX.
+RECORD_DEFAULT_MAX="${TBRIDGE_RECORD_MAX:-300}"
 
 usage() {
   cat <<EOF
@@ -74,6 +81,19 @@ Inspection :
                        bounds. Plus fiable que tap par coords quand le focus est
                        volatile (cover auto-défilante, etc.). Accepte forme courte
                        ('avatar') ou full ('fr.tf1.mytf1:id/avatar').
+
+Capture scenario (repro/validation tickets accessibilité) :
+  record start [--max <s>]  Démarre screenrecord côté device. Hard cap ${RECORD_DEFAULT_MAX}s
+                            par défaut (= 5 min) — Android stop tout seul à expiration,
+                            JAMAIS de fuite même si stop oublié. Cleanup auto des
+                            screenrecord orphelins avant de démarrer.
+  record stop [<out_path>]  SIGINT (flush propre du .mp4) + pull en local.
+                            Défaut out_path = ./tb_record_<epoch>.mp4
+  record cleanup            Kill tout screenrecord traînant + supprime les .mp4
+                            orphelins sur /sdcard/. À utiliser en debug.
+  utterances [clear]        Sans arg : dump les utterances TalkBack (text=...)
+                            depuis le dernier 'logcat -c'. Avec 'clear' : juste
+                            clear le buffer (pour démarrer une nouvelle capture).
 
 Actions globales système (performGlobalAction) :
   back                 = bouton retour système
@@ -198,7 +218,91 @@ check_status() {
     echo "KO  fenêtre tbridge expirée ou jamais activée (ouvrir l'app → Activer)"
     ok=1
   fi
+  # Info screenrecord en cours
+  if [[ -f "$RECORD_PID_FILE" ]]; then
+    local started elapsed max pid
+    started=$(cat "$RECORD_STARTED_FILE" 2>/dev/null || echo 0)
+    max=$(cat "$RECORD_MAX_FILE" 2>/dev/null || echo "?")
+    pid=$(cat "$RECORD_PID_FILE")
+    elapsed=$(( $(date +%s) - started ))
+    echo "ℹ️  screenrecord en cours depuis ${elapsed}s (pid=${pid}, hard cap=${max}s)"
+  fi
   return $ok
+}
+
+record_start() {
+  local max="$RECORD_DEFAULT_MAX"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --max) max="$2"; shift 2 ;;
+      *) echo "Usage: $(basename "$0") record start [--max <seconds>]" >&2; exit 1 ;;
+    esac
+  done
+  # Cleanup défensif : kill tout screenrecord orphelin avant de démarrer
+  "$ADB" shell "pkill -INT -f screenrecord" >/dev/null 2>&1 || true
+  sleep 0.3
+  local remote_path="/sdcard/tb_record_$(date +%s).mp4"
+  # Lancer screenrecord en background **côté device** via nohup + redirections.
+  # Sans ça, le screenrecord est lié à la session adb shell et l'arrêt de cette
+  # session le tue (ou bloque le caller). Le `&` est interprété côté device
+  # grâce aux guillemets — adb shell retourne immédiatement.
+  # --time-limit = hard cap Android, garantie anti-fuite même si stop oublié.
+  "$ADB" shell "nohup screenrecord --time-limit $max $remote_path </dev/null >/dev/null 2>&1 &"
+  sleep 1.2
+  local remote_pid
+  remote_pid=$("$ADB" shell "pidof screenrecord" 2>/dev/null | tr -d '[:space:]')
+  if [[ -z "$remote_pid" ]]; then
+    echo "ERR : screenrecord ne s'est pas lancé côté device" >&2
+    exit 1
+  fi
+  printf '%s' "$remote_pid" > "$RECORD_PID_FILE"
+  printf '%s' "$remote_path" > "$RECORD_PATH_FILE"
+  printf '%s' "$max" > "$RECORD_MAX_FILE"
+  printf '%s' "$(date +%s)" > "$RECORD_STARTED_FILE"
+  echo "Record démarré : pid=$remote_pid path=$remote_path hard_cap=${max}s"
+}
+
+record_stop() {
+  local out="${1:-./tb_record_$(date +%s).mp4}"
+  if [[ ! -f "$RECORD_PID_FILE" ]]; then
+    echo "WARN : pas de record en cours (pas de $RECORD_PID_FILE). Cleanup défensif." >&2
+    "$ADB" shell "pkill -INT -f screenrecord" >/dev/null 2>&1 || true
+    exit 1
+  fi
+  local remote_pid remote_path
+  remote_pid=$(cat "$RECORD_PID_FILE")
+  remote_path=$(cat "$RECORD_PATH_FILE")
+  # SIGINT (= équiv Ctrl+C) = flush propre du .mp4 (header MOOV écrit).
+  # SIGKILL = mp4 corrompu non lisible.
+  "$ADB" shell "kill -INT $remote_pid" >/dev/null 2>&1 || true
+  sleep 1.5
+  if "$ADB" pull "$remote_path" "$out" >/dev/null 2>&1; then
+    "$ADB" shell "rm $remote_path" >/dev/null 2>&1 || true
+    echo "Record stoppé + pull : $out"
+  else
+    echo "ERR : pull du record a échoué ($remote_path → $out)" >&2
+    rm -f "$RECORD_PID_FILE" "$RECORD_PATH_FILE" "$RECORD_MAX_FILE" "$RECORD_STARTED_FILE"
+    exit 1
+  fi
+  rm -f "$RECORD_PID_FILE" "$RECORD_PATH_FILE" "$RECORD_MAX_FILE" "$RECORD_STARTED_FILE"
+}
+
+record_cleanup() {
+  "$ADB" shell "pkill -INT -f screenrecord" >/dev/null 2>&1 || true
+  sleep 0.5
+  # Supprime les .mp4 orphelins (notre naming)
+  "$ADB" shell "rm /sdcard/tb_record_*.mp4 2>/dev/null" || true
+  rm -f "$RECORD_PID_FILE" "$RECORD_PATH_FILE" "$RECORD_MAX_FILE" "$RECORD_STARTED_FILE"
+  echo "Cleanup OK : screenrecord orphelins killed + /sdcard/tb_record_*.mp4 supprimés"
+}
+
+utterances_dump() {
+  # Filtre `talkback` log + extrait `text=...` de chaque ligne speakWithSpeechCachePlayer.
+  # Format brut : `D talkback: SpeechCacheManager: speakWithSpeechCachePlayer:speechInfo=SpeechInfo{utteranceId=X, text=..., ...}`
+  "$ADB" logcat -d -s talkback:V 2>&1 \
+    | grep "speakWithSpeechCachePlayer" \
+    | sed -E 's/.*text=([^,]+),.*/\1/' \
+    | grep -v "speakWithSpeechCachePlayer"  # filtre lignes où le sed a pas matché
 }
 
 TALKBACK_COMPONENT="com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
@@ -242,6 +346,23 @@ case "$cmd" in
   status)       check_status ;;
   talkback-on)  talkback_on ;;
   talkback-off) talkback_off ;;
+  record)
+    sub="${1:-}"; shift || true
+    case "$sub" in
+      start)   record_start "$@" ;;
+      stop)    record_stop "$@" ;;
+      cleanup) record_cleanup ;;
+      *) echo "Usage: $(basename "$0") record start [--max <s>] | stop [<out>] | cleanup" >&2; exit 1 ;;
+    esac
+    ;;
+  utterances)
+    sub="${1:-}"
+    case "$sub" in
+      "")    utterances_dump ;;
+      clear) "$ADB" logcat -c; echo "Logcat cleared" ;;
+      *) echo "Usage: $(basename "$0") utterances [clear]" >&2; exit 1 ;;
+    esac
+    ;;
   right)     nav_n SWIPE_RIGHT "${1:-1}" ;;
   left)      nav_n SWIPE_LEFT "${1:-1}" ;;
   up)        broadcast SWIPE_UP ;;
