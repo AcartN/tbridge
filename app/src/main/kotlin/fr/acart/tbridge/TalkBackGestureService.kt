@@ -425,6 +425,13 @@ internal class TalkBackGestureService : AccessibilityService() {
         appendAttr(sb, "scrollable", node.isScrollable.toString())
         appendAttr(sb, "enabled", node.isEnabled.toString())
         appendAttr(sb, "long-clickable", node.isLongClickable.toString())
+        // heading : disponible depuis API 28. Crucial pour les tickets a11y
+        // touchant Modifier.semantics { heading() } / Role.Heading — sans ce
+        // signal côté dump, on ne peut confirmer le heading que via l'utterance
+        // (« Titre » en FR / « Heading » en EN), capture moins déterministe.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            appendAttr(sb, "heading", node.isHeading.toString())
+        }
         if (node.isAccessibilityFocused) appendAttr(sb, "accessibility-focused", "true")
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
