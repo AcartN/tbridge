@@ -233,12 +233,14 @@ check_status() {
   fi
   # Auto-activer le verbose logging côté Android log system. Idempotent.
   "$ADB" shell "setprop log.tag.talkback VERBOSE" >/dev/null 2>&1 || true
-  # Check empirique : si on a 0 ligne talkback récente, WARN avec suggestion
-  # talkback-restart (le process doit respawn pour pick up le setprop).
+  # Check empirique : si on a 0 ligne talkback récente, WARN. Pour que TalkBack
+  # pick up le setprop verbose il faut un process frais — NE PAS utiliser
+  # talkback-restart (force-stop = Android retire TalkBack des services activés,
+  # cf talkback_restart plus bas). Le cycle sûr = talkback-off puis talkback-on.
   local tb_lines
   tb_lines=$("$ADB" logcat -d -t 500 2>/dev/null | grep -c "talkback:" || true)
   if (( tb_lines < 3 )); then
-    echo "WARN  Aucune ligne talkback récente dans logcat. Lance './tb.sh talkback-restart' pour que TalkBack respawn et pick up 'setprop log.tag.talkback VERBOSE'. Sans ça les utterances ne seront pas captées dans le bundle."
+    echo "WARN  Aucune ligne talkback récente dans logcat. Pour activer la capture verbose : './tb.sh talkback-off && ./tb.sh talkback-on' (process frais qui pick up 'setprop log.tag.talkback VERBOSE'). NE PAS utiliser talkback-restart (désactive TalkBack)."
   fi
   return $ok
 }
