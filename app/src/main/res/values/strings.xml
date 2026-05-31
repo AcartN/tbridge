@@ -13,6 +13,8 @@
     <string name="status_enabled">Service AccessibilityService activé ✓</string>
     <string name="status_disabled">Service désactivé — active-le dans les paramètres</string>
     <string name="open_settings">Ouvrir les paramètres d\'accessibilité</string>
+    <string name="open_talkback_settings">Réglages TalkBack (Google)</string>
+    <string name="toast_talkback_settings_unavailable">Réglages TalkBack indisponibles — ouverture des paramètres d\'accessibilité</string>
 
     <!-- Activation (time-bounded) -->
     <string name="activation_title">Écoute des broadcasts</string>

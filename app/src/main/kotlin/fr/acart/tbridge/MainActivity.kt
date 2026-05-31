@@ -79,6 +79,23 @@ internal class MainActivity : AppCompatActivity() {
                         onOpenAccessibilitySettings = {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         },
+                        onOpenTalkBackSettings = {
+                            // Raccourci direct vers les réglages Google TalkBack (l'activity
+                            // n'est pas lançable depuis le launcher). Fallback sur les réglages
+                            // d'accessibilité Android si TalkBack absent (ex. device Samsung sans
+                            // Google TalkBack installé).
+                            try {
+                                startActivity(
+                                    Intent().setClassName(
+                                        "com.google.android.marvin.talkback",
+                                        "com.android.talkback.TalkBackPreferencesActivity",
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                                toast(getString(R.string.toast_talkback_settings_unavailable))
+                            }
+                        },
                         onActivate = { durationMs ->
                             // Activation = grant access → biometric required.
                             guard.protect(
@@ -220,6 +237,7 @@ private fun TbridgeScreen(
     settings: TBridgeSettings,
     isAccessibilityServiceEnabled: () -> Boolean,
     onOpenAccessibilitySettings: () -> Unit,
+    onOpenTalkBackSettings: () -> Unit,
     onActivate: (Long) -> Unit,
     onDeactivate: () -> Unit,
     onShellOnlyChange: (Boolean) -> Unit,
@@ -285,6 +303,7 @@ private fun TbridgeScreen(
         ServiceStatusCard(
             enabled = serviceEnabled,
             onOpenSettings = onOpenAccessibilitySettings,
+            onOpenTalkBackSettings = onOpenTalkBackSettings,
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -327,7 +346,11 @@ private fun TbridgeScreen(
 }
 
 @Composable
-private fun ServiceStatusCard(enabled: Boolean, onOpenSettings: () -> Unit) {
+private fun ServiceStatusCard(
+    enabled: Boolean,
+    onOpenSettings: () -> Unit,
+    onOpenTalkBackSettings: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -346,6 +369,13 @@ private fun ServiceStatusCard(enabled: Boolean, onOpenSettings: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.open_settings))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onOpenTalkBackSettings,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.open_talkback_settings))
             }
         }
     }
