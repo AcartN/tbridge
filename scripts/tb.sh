@@ -312,17 +312,28 @@ record_cleanup() {
 }
 
 utterances_dump() {
-  # Filtre `talkback` log + extrait `text=...` de chaque ligne speakWithSpeechCachePlayer.
-  # Format brut : `D talkback: SpeechCacheManager: speakWithSpeechCachePlayer:speechInfo=SpeechInfo{utteranceId=X, text=..., ...}`
+  # Extrait l'utterance vocalisée par TalkBack depuis logcat. Deux formats gérés :
+  #  - TalkBack récent (Play Store ~2024+, vu sur Samsung) : ligne Pipeline
+  #    `talkback: Pipeline ... execute() feedback=Feedback{... action=SPEAK  text="<utterance complète + rôle>" ...}`
+  #    L'utterance inclut le rôle final ("Bouton", "Titre", etc.) et la ponctuation
+  #    réelle (utile pour les bugs type "point avant le rôle"). On matche la ligne
+  #    `Pipeline` et PAS `Actors` (même contenu) pour éviter le doublon.
+  #  - TalkBack plus ancien (ex. Pixel) : `D talkback: SpeechCacheManager:
+  #    speakWithSpeechCachePlayer:...text=...,` (fallback).
   #
-  # Note 22 mai 2026 : `logcat -d -s talkback:V` rate les lignes de niveau Debug
-  # sur certains devices (logcat priority logic). On utilise `logcat -d` brut +
-  # grep textuel pour matcher fiablement. `grep -oE 'text=[^,]+'` extrait juste
-  # la portion utile, plus simple que sed.
+  # PRÉREQUIS : niveau de log INTERNE de TalkBack = Verbeux (Paramètres TalkBack →
+  # Paramètres avancés → Développeur → Niveau de journalisation = Verbeux), EN PLUS
+  # de `setprop log.tag.talkback VERBOSE`. Le setprop seul ne suffit pas : le niveau
+  # interne gate l'émission des lignes speech. (Découvert 29 mai 2026, tablette Samsung.)
+  #
+  # Note : `logcat -d -s talkback:V` rate les lignes Debug sur certains devices →
+  # on utilise `logcat -d` brut + grep. `\K` (PCRE) reset le début du match pour
+  # n'extraire que l'utterance. Multibyte-safe (bornes " et , en ASCII).
+  # `uniq` : le pipeline TalkBack loggue souvent la même feedback 2-3× d'affilée →
+  # on collapse les doublons CONSÉCUTIFS (n'affecte pas des répétitions distantes).
   "$ADB" logcat -d 2>&1 \
-    | grep "speakWithSpeechCachePlayer" \
-    | grep -oE 'text=[^,]+' \
-    | sed 's/^text=//'
+    | grep -oP '(?:talkback: Pipeline.*?action=SPEAK\s+text="\K[^"]*)|(?:speakWithSpeechCachePlayer.*?text=\K[^,]+)' \
+    | uniq
 }
 
 TALKBACK_COMPONENT="com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService"
