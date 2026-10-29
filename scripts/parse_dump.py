@@ -13,6 +13,7 @@ def walk(node, depth=0):
     cd = attrs.get("content-desc", "") or ""
     text = attrs.get("text", "") or ""
     clickable = attrs.get("clickable") == "true"
+    heading = attrs.get("heading") == "true"
     focused = attrs.get("accessibility-focused") == "true"
     klass = (attrs.get("class", "") or "").split(".")[-1]
     rid = attrs.get("resource-id", "") or ""
@@ -22,10 +23,11 @@ def walk(node, depth=0):
     # rid sert aussi de signal : un node avec resource-id (testId) est intéressant
     # pour l'accessibility même s'il n'a pas de cd/text (heading invisible, conteneur
     # nommé, etc.).
-    has_signal = bool(cd or text or clickable or focused or rid_short)
+    has_signal = bool(cd or text or clickable or heading or focused or rid_short)
     if has_signal:
         marker = ">>>" if focused else "   "
-        flags = "C" if clickable else "-"
+        # C = clickable, H = heading (AccessibilityNodeInfo.isHeading)
+        flags = ("C" if clickable else "-") + ("H" if heading else "-")
         line = f"{marker} {' ' * depth}{klass:<24} [{flags}] "
         if cd:
             line += f"desc={cd!r} "
