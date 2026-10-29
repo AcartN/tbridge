@@ -327,12 +327,12 @@ utterances_dump() {
   # interne gate l'émission des lignes speech. (Découvert 29 mai 2026, tablette Samsung.)
   #
   # Note : `logcat -d -s talkback:V` rate les lignes Debug sur certains devices →
-  # on utilise `logcat -d` brut + grep. `\K` (PCRE) reset le début du match pour
-  # n'extraire que l'utterance. Multibyte-safe (bornes " et , en ASCII).
+  # on utilise `logcat -d` brut + perl (pas `grep -P` : absent du grep BSD de
+  # macOS). Multibyte-safe (bornes " et , en ASCII).
   # `uniq` : le pipeline TalkBack loggue souvent la même feedback 2-3× d'affilée →
   # on collapse les doublons CONSÉCUTIFS (n'affecte pas des répétitions distantes).
   "$ADB" logcat -d 2>&1 \
-    | grep -oP '(?:talkback: Pipeline.*?action=SPEAK\s+text="\K[^"]*)|(?:speakWithSpeechCachePlayer.*?text=\K[^,]+)' \
+    | perl -ne 'if (/talkback: Pipeline.*?action=SPEAK\s+text="([^"]*)/) { print "$1\n" } elsif (/speakWithSpeechCachePlayer.*?text=([^,]+)/) { print "$1\n" }' \
     | uniq
 }
 
@@ -387,10 +387,19 @@ talkback_off() {
     echo "TalkBack déjà désactivé"
     return 0
   fi
-  # Retire le composant TalkBack (et nettoie les éventuels ':' en double / début / fin)
+  # Retire toute entrée TalkBack, nom long (…/com.google.android.marvin.talkback.TalkBackService)
+  # comme nom court (…/.TalkBackService) : Android enregistre l'un ou l'autre selon qui a activé le service.
   local new
-  new=$(printf '%s' "$current" | sed -E "s#:?${TALKBACK_COMPONENT}##g; s#^:##; s#:\$##")
-  "$ADB" shell settings put secure enabled_accessibility_services "$new" >/dev/null
+  new=$(printf '%s' "$current" | tr ':' '\n' | grep -v '^com\.google\.android\.marvin\.talkback/' | paste -sd ':' -)
+  if [[ -z "$new" ]]; then
+    "$ADB" shell settings delete secure enabled_accessibility_services >/dev/null
+  else
+    "$ADB" shell settings put secure enabled_accessibility_services "$new" >/dev/null
+  fi
+  if "$ADB" shell settings get secure enabled_accessibility_services 2>/dev/null | grep -q "com.google.android.marvin.talkback"; then
+    echo "WARN : TalkBack toujours présent dans enabled_accessibility_services"
+    return 1
+  fi
   echo "TalkBack désactivé"
 }
 
