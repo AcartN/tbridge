@@ -105,6 +105,17 @@ Volume d'accessibilité (voix TalkBack) :
                        Android refuse ce réglage à adb (CHANGE_ACCESSIBILITY_VOLUME).
                        Ne vide pas logcat (les utterances restent capturables).
 
+Affichage (réglages système via adb, sans tbridge, appliqués tout de suite) :
+  font-scale [X|reset] Taille de police. Sans arg : valeur actuelle. X = facteur
+                       (1.0 = 100 %, 2.0 = 200 %, le max des Réglages sur Android 14+).
+  display-size [DPI|max|reset]
+                       Taille d'affichage (densité). Sans arg : densité actuelle et
+                       largeur d'écran en dp. 'max' = le cran le plus grand des
+                       Réglages : écran à 320 dp de large, au plus 1,5× la densité
+                       par défaut (règle AOSP DisplayDensityUtils).
+  bold-text [on|off]   Texte en gras (Réglages → Affichage → Texte en gras).
+  a11y-reset           Remet police 100 %, densité par défaut, gras désactivé.
+
 Actions globales système (performGlobalAction) :
   back                 = bouton retour système
   home                 = bouton home
@@ -534,6 +545,56 @@ case "$cmd" in
     sleep 0.4
     "$ADB" logcat -d -T "$since" -s TBGesture:D 2>&1 | grep "A11yVolume:" | tail -1 \
       || { echo "(aucun log : tbridge activé et fenêtre ouverte ? cf. 'status')" >&2; exit 1; }
+    ;;
+  font-scale)
+    case "${1:-}" in
+      "") ;;
+      reset) "$ADB" shell settings put system font_scale 1.0 ;;
+      *)
+        if ! [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+          echo "Usage: font-scale [X|reset]  (ex. 1.3, 2.0)" >&2; exit 1
+        fi
+        "$ADB" shell settings put system font_scale "$1"
+        ;;
+    esac
+    echo "font_scale = $("$ADB" shell settings get system font_scale | tr -d '[:space:]')"
+    ;;
+  display-size)
+    phys=$("$ADB" shell wm density | grep -oE 'Physical density: [0-9]+' | grep -oE '[0-9]+')
+    size=$("$ADB" shell wm size | grep -oE 'Physical size: [0-9]+x[0-9]+' | grep -oE '[0-9]+x[0-9]+')
+    w=${size%x*}; h=${size#*x}; min_px=$(( w < h ? w : h ))
+    # Largest step of Settings: smallest width of 320 dp, capped at 1.5x the default density.
+    max_dpi=$(( 160 * min_px / 320 )); cap=$(( phys * 3 / 2 )); (( max_dpi > cap )) && max_dpi=$cap
+    case "${1:-}" in
+      "") ;;
+      reset) "$ADB" shell wm density reset ;;
+      max) "$ADB" shell wm density "$max_dpi" ;;
+      *)
+        if ! [[ "$1" =~ ^[0-9]+$ ]]; then
+          echo "Usage: display-size [DPI|max|reset]" >&2; exit 1
+        fi
+        "$ADB" shell wm density "$1"
+        ;;
+    esac
+    current=$("$ADB" shell wm density | grep -oE 'Override density: [0-9]+' | grep -oE '[0-9]+' || true)
+    current=${current:-$phys}
+    echo "densité = $current dpi (défaut $phys, max Réglages $max_dpi) · largeur = $(( min_px * 160 / current )) dp"
+    ;;
+  bold-text)
+    case "${1:-}" in
+      "") ;;
+      on) "$ADB" shell settings put secure font_weight_adjustment 300 ;;
+      off) "$ADB" shell settings put secure font_weight_adjustment 0 ;;
+      *) echo "Usage: bold-text [on|off]" >&2; exit 1 ;;
+    esac
+    adj=$("$ADB" shell settings get secure font_weight_adjustment | tr -d '[:space:]')
+    if [[ "$adj" =~ ^[1-9][0-9]*$ ]]; then echo "texte en gras : on ($adj)"; else echo "texte en gras : off"; fi
+    ;;
+  a11y-reset)
+    "$ADB" shell settings put system font_scale 1.0
+    "$ADB" shell wm density reset
+    "$ADB" shell settings put secure font_weight_adjustment 0
+    echo "Police 100 %, densité par défaut, gras désactivé"
     ;;
   list-actions)
     "$ADB" logcat -c
