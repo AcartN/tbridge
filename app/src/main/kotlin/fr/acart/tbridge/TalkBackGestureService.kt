@@ -9,7 +9,10 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Path
 import android.graphics.Rect
+import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -75,6 +78,29 @@ internal class TalkBackGestureService : AccessibilityService() {
      */
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == TBridgeSettings.KEY_SHELL_ONLY) registerReceiverWithCurrentMode()
+        if (key == TBridgeSettings.KEY_ACTIVE_UNTIL) refreshListeningState()
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val expiryRunnable = Runnable { refreshListeningState() }
+
+    /**
+     * Synchronise la notification « tbridge actif » avec la fenêtre d'écoute, et programme
+     * le prochain passage à l'expiration. À l'expiration : notification retirée et, si
+     * autoDisable, disableSelf() tout de suite (au lieu d'attendre le prochain broadcast).
+     */
+    private fun refreshListeningState() {
+        mainHandler.removeCallbacks(expiryRunnable)
+        if (settings.isListeningActive) {
+            ActiveNotification.show(this, settings.listenActiveUntilMs)
+            mainHandler.postDelayed(expiryRunnable, settings.listenActiveUntilMs - System.currentTimeMillis())
+        } else {
+            ActiveNotification.cancel(this)
+            if (settings.autoDisableOnExpiry && settings.listenActiveUntilMs > 0) {
+                Log.d(tag, "Listening window expired + autoDisable → disableSelf()")
+                disableSelf()
+            }
+        }
     }
 
     override fun onServiceConnected() {
@@ -89,7 +115,9 @@ internal class TalkBackGestureService : AccessibilityService() {
         if (settings.autoDisableOnExpiry && !settings.isListeningActive && settings.listenActiveUntilMs > 0) {
             Log.d(tag, "onServiceConnected with expired window + autoDisable → disableSelf()")
             disableSelf()
+            return
         }
+        refreshListeningState()
     }
 
     private fun registerReceiverWithCurrentMode() {
@@ -110,6 +138,8 @@ internal class TalkBackGestureService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(expiryRunnable)
+        ActiveNotification.cancel(this)
         settings.unregisterListener(prefsListener)
         if (receiverRegistered) {
             runCatching { unregisterReceiver(receiver) }
@@ -153,6 +183,7 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.FOCUSED -> logFocused()
             GestureActions.INPUT_TEXT -> inputTextOnFocused(intent.getStringExtra(GestureActions.EXTRA_TEXT))
             GestureActions.ACTIVATE_BY_ID -> activateById(intent.getStringExtra(GestureActions.EXTRA_VIEW_ID))
+            GestureActions.A11Y_VOLUME -> handleA11yVolume(intent)
             GestureActions.GLOBAL_BACK -> performGlobalLogged(GLOBAL_ACTION_BACK, "GLOBAL_BACK")
             GestureActions.GLOBAL_HOME -> performGlobalLogged(GLOBAL_ACTION_HOME, "GLOBAL_HOME")
             GestureActions.GLOBAL_RECENTS -> performGlobalLogged(GLOBAL_ACTION_RECENTS, "GLOBAL_RECENTS")
@@ -163,6 +194,18 @@ internal class TalkBackGestureService : AccessibilityService() {
             GestureActions.GLOBAL_SCREENSHOT -> performGlobalLogged(GLOBAL_ACTION_TAKE_SCREENSHOT, "GLOBAL_SCREENSHOT")
             else -> Log.w(tag, "Unknown action: $action")
         }
+    }
+
+    private fun handleA11yVolume(intent: Intent) {
+        val audio = getSystemService(AudioManager::class.java)
+        val stream = AudioManager.STREAM_ACCESSIBILITY
+        val min = audio.getStreamMinVolume(stream)
+        val max = audio.getStreamMaxVolume(stream)
+        if (intent.hasExtra(GestureActions.EXTRA_LEVEL)) {
+            val requested = intent.getIntExtra(GestureActions.EXTRA_LEVEL, max)
+            audio.setStreamVolume(stream, requested.coerceIn(min, max), 0)
+        }
+        Log.d(tag, "A11yVolume: ${audio.getStreamVolume(stream)} in [$min..$max]")
     }
 
     private fun performGlobalLogged(globalAction: Int, label: String) {

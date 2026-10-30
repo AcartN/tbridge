@@ -16,6 +16,23 @@ android {
         versionName = "0.1.0"
     }
 
+    // Clé de debug partagée entre machines (copie de celle du VPS) : sans elle, un APK compilé
+    // ailleurs ne peut pas mettre à jour celui installé, et une désinstallation coûte la
+    // réactivation du service, le token et la levée du « paramètre restreint ».
+    // Absente → clé de debug par défaut de la machine.
+    val sharedDebugKeystore = file("${System.getProperty("user.home")}/.android/tbridge-debug.keystore")
+
+    signingConfigs {
+        getByName("debug") {
+            if (sharedDebugKeystore.exists()) {
+                storeFile = sharedDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false

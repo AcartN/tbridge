@@ -74,6 +74,18 @@ internal object GestureActions {
     /** Extra string requis par ACTIVATE_BY_ID : viewId (court ou avec package). */
     const val EXTRA_VIEW_ID = "view_id"
 
+    /**
+     * Volume d'accessibilité (STREAM_ACCESSIBILITY, voix de TalkBack). Avec l'extra int
+     * [EXTRA_LEVEL] : règle le niveau (borné au min/max du stream). Sans : lit seulement.
+     * Logge toujours le niveau final (`A11yVolume: …`). Passe par tbridge car Android
+     * réserve ce réglage aux services d'accessibilité activés : `adb shell cmd
+     * media_session volume --stream 10 --set N` est refusé (CHANGE_ACCESSIBILITY_VOLUME).
+     */
+    const val A11Y_VOLUME = "${PREFIX}A11Y_VOLUME"
+
+    /** Extra int optionnel pour A11Y_VOLUME : niveau voulu. */
+    const val EXTRA_LEVEL = "level"
+
     // Global actions (performGlobalAction)
     const val GLOBAL_BACK = "${PREFIX}GLOBAL_BACK"
     const val GLOBAL_HOME = "${PREFIX}GLOBAL_HOME"
@@ -105,6 +117,7 @@ internal object GestureActions {
         FOCUSED,
         INPUT_TEXT,
         ACTIVATE_BY_ID,
+        A11Y_VOLUME,
         GLOBAL_BACK,
         GLOBAL_HOME,
         GLOBAL_RECENTS,

@@ -99,6 +99,12 @@ Capture scenario (repro/validation tickets accessibilité) :
                             depuis le dernier 'logcat -c'. Avec 'clear' : juste
                             clear le buffer (pour démarrer une nouvelle capture).
 
+Volume d'accessibilité (voix TalkBack) :
+  volume [N]           Sans arg : affiche le niveau. Avec N : règle le niveau (borné
+                       au min/max du stream, typiquement 1..15). Passe par tbridge :
+                       Android refuse ce réglage à adb (CHANGE_ACCESSIBILITY_VOLUME).
+                       Ne vide pas logcat (les utterances restent capturables).
+
 Actions globales système (performGlobalAction) :
   back                 = bouton retour système
   home                 = bouton home
@@ -513,6 +519,21 @@ case "$cmd" in
       exit 1
     fi
     broadcast ACTIVATE_BY_ID --es view_id "$1"
+    ;;
+  volume)
+    if [[ $# -gt 1 ]] || { [[ $# -eq 1 ]] && ! [[ "$1" =~ ^[0-9]+$ ]]; }; then
+      echo "Usage: volume [N]" >&2; exit 1
+    fi
+    # Read only the lines logged after the broadcast, without clearing logcat.
+    since=$("$ADB" shell date +%s.000 | tr -d '[:space:]')
+    if [[ $# -eq 1 ]]; then
+      broadcast A11Y_VOLUME --ei level "$1"
+    else
+      broadcast A11Y_VOLUME
+    fi
+    sleep 0.4
+    "$ADB" logcat -d -T "$since" -s TBGesture:D 2>&1 | grep "A11yVolume:" | tail -1 \
+      || { echo "(aucun log : tbridge activé et fenêtre ouverte ? cf. 'status')" >&2; exit 1; }
     ;;
   list-actions)
     "$ADB" logcat -c

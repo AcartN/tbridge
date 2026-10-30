@@ -1,12 +1,15 @@
 package fr.acart.tbridge
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +17,7 @@ import android.provider.Settings
 import android.text.format.DateFormat
 import android.widget.Toast
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -63,12 +67,27 @@ internal class MainActivity : AppCompatActivity() {
     private lateinit var settings: TBridgeSettings
     private lateinit var guard: BiometricGuard
 
+    // The service posts the notification itself (it re-reads the window on each change).
+    private val notificationPermissionRequest =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted && settings.isListeningActive && TalkBackGestureService.instance != null) {
+                ActiveNotification.show(this, settings.listenActiveUntilMs)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         settings = TBridgeSettings(this)
         settings.cleanupLegacyKeys()
         guard = BiometricGuard(this)
+
+        // Needed for the "tbridge actif" status bar notification (Android 13+).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -463,6 +482,9 @@ private fun DurationChips(
         TBridgeSettings.DURATION_PRESETS_MS[3] to R.string.duration_1h,
         TBridgeSettings.DURATION_PRESETS_MS[4] to R.string.duration_2h,
         TBridgeSettings.DURATION_PRESETS_MS[5] to R.string.duration_4h,
+        TBridgeSettings.DURATION_PRESETS_MS[6] to R.string.duration_6h,
+        TBridgeSettings.DURATION_PRESETS_MS[7] to R.string.duration_12h,
+        TBridgeSettings.DURATION_PRESETS_MS[8] to R.string.duration_1d,
     )
     androidx.compose.foundation.layout.FlowRow(
         modifier = Modifier.fillMaxWidth(),

@@ -27,6 +27,12 @@
     <string name="duration_1h">1 heure</string>
     <string name="duration_2h">2 heures</string>
     <string name="duration_4h">4 heures</string>
+    <string name="duration_6h">6 heures</string>
+    <string name="duration_12h">12 heures</string>
+    <string name="duration_1d">1 jour</string>
+    <string name="notif_channel_name">Écoute active</string>
+    <string name="notif_title">tbridge actif</string>
+    <string name="notif_text">Écoute des commandes adb jusqu\'à %1$s</string>
     <string name="activate">Activer</string>
     <string name="deactivate">Désactiver maintenant</string>
     <string name="toast_activated">Écoute activée pour %1$s</string>

@@ -115,6 +115,9 @@ internal class TBridgeSettings(context: Context) {
             TimeUnit.HOURS.toMillis(1),
             TimeUnit.HOURS.toMillis(2),
             TimeUnit.HOURS.toMillis(4),
+            TimeUnit.HOURS.toMillis(6),
+            TimeUnit.HOURS.toMillis(12),
+            TimeUnit.DAYS.toMillis(1),
         )
     }
 }
