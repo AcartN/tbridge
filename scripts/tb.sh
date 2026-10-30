@@ -105,6 +105,19 @@ Volume d'accessibilité (voix TalkBack) :
                        Android refuse ce réglage à adb (CHANGE_ACCESSIBILITY_VOLUME).
                        Ne vide pas logcat (les utterances restent capturables).
 
+Navigation sans TalkBack (adb seul, pas besoin de tbridge) :
+  tap-on <cible> [--index N] [--wait S]
+                       Appuie au centre de l'élément dont le resource-id (complet
+                       ou court), le texte ou la content-desc vaut exactement
+                       <cible>. --index N : N-ième occurrence (0 = première, pour
+                       les ids répétés). Réessaie chaque seconde pendant S s
+                       (défaut 10) : pas besoin de sleep entre deux écrans.
+                       Refuse si TalkBack est allumé (le tap ne ferait que placer
+                       le focus, et uiautomator dump interrompt TalkBack).
+  ui                   Liste les éléments de l'écran (id, texte, desc, cliquable,
+                       bounds) via uiautomator. Pour trouver la <cible> de tap-on.
+                       TalkBack éteint seulement (sinon : 'dump', via tbridge).
+
 Affichage (réglages système via adb, sans tbridge, appliqués tout de suite) :
   font-scale [X|reset] Taille de police. Sans arg : valeur actuelle. X = facteur
                        (1.0 = 100 %, 2.0 = 200 %, le max des Réglages sur Android 14+).
@@ -589,6 +602,63 @@ case "$cmd" in
     esac
     adj=$("$ADB" shell settings get secure font_weight_adjustment | tr -d '[:space:]')
     if [[ "$adj" =~ ^[1-9][0-9]*$ ]]; then echo "texte en gras : on ($adj)"; else echo "texte en gras : off"; fi
+    ;;
+  tap-on|ui)
+    if "$ADB" shell settings get secure enabled_accessibility_services | grep -q "marvin.talkback"; then
+      echo "ERR : TalkBack est allumé. 'tb.sh talkback-off' d'abord, ou naviguer avec right/left/click." >&2
+      exit 1
+    fi
+    if [[ "$cmd" == "ui" ]]; then
+      "$ADB" shell uiautomator dump /sdcard/tb_ui.xml >/dev/null 2>&1 || true
+      "$ADB" shell cat /sdcard/tb_ui.xml > /tmp/tb_ui.xml
+      python3 -I "$(dirname "$0")/parse_dump.py" /tmp/tb_ui.xml
+      exit 0
+    fi
+    key=""; index=0; wait_s=10
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --index) index="${2:-}"; shift 2 ;;
+        --wait) wait_s="${2:-}"; shift 2 ;;
+        *) [[ -z "$key" ]] || { echo "Cible en double : '$1'" >&2; exit 1; }; key="$1"; shift ;;
+      esac
+    done
+    if [[ -z "$key" ]] || ! [[ "$index" =~ ^[0-9]+$ && "$wait_s" =~ ^[0-9]+$ ]]; then
+      echo "Usage: tap-on <resource-id|texte|content-desc> [--index N] [--wait S]" >&2; exit 1
+    fi
+    deadline=$(( SECONDS + wait_s ))
+    find_py='
+import re, sys, xml.etree.ElementTree as ET
+key, index = sys.argv[1], int(sys.argv[2])
+try:
+    root = ET.fromstring(sys.stdin.read())
+except ET.ParseError:
+    sys.exit(1)
+found = 0
+for n in root.iter("node"):
+    a = n.attrib
+    rid = a.get("resource-id", "")
+    if key in (rid, rid.split("/")[-1], a.get("text"), a.get("content-desc")):
+        b = [int(v) for v in re.findall(r"\d+", a.get("bounds", ""))]
+        if len(b) == 4 and b[2] > b[0] and b[3] > b[1]:
+            if found == index:
+                print((b[0] + b[2]) // 2, (b[1] + b[3]) // 2)
+                sys.exit(0)
+            found += 1
+sys.exit(1)'
+    while :; do
+      "$ADB" shell uiautomator dump /sdcard/tb_ui.xml >/dev/null 2>&1 || true
+      if coords=$("$ADB" shell cat /sdcard/tb_ui.xml 2>/dev/null | python3 -I -c "$find_py" "$key" "$index"); then
+        break
+      fi
+      if (( SECONDS >= deadline )); then
+        echo "Introuvable : '$key' (ni resource-id, ni texte, ni content-desc exacts)" >&2
+        exit 1
+      fi
+      sleep 1
+    done
+    # shellcheck disable=SC2086 # "x y" must split into two args
+    "$ADB" shell input tap $coords
+    echo "tap '$key' à $coords"
     ;;
   a11y-reset)
     "$ADB" shell settings put system font_scale 1.0
